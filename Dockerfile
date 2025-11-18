@@ -1,23 +1,28 @@
-# 1. 選擇 Python 3.11-slim 作為基礎
-FROM python:3.11-slim
+FROM python:3.9
 
-# 2. 設定工作目錄
-WORKDIR /app
+# 1. 設定工作目錄
+WORKDIR /code
 
-# 3. 複製需求檔案
-COPY requirements.txt .
+# 2. 複製 requirements 並安裝
+# (利用 Docker cache 機制，先裝套件再複製程式碼)
+COPY ./requirements.txt /code/requirements.txt
+RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 
-# 4. 安裝系統依賴 (Gdal) 和 Python 套件
-# (libgdal-dev 是 geopandas 和 rasterio 必需的)
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libgdal-dev \
-    && rm -rf /var/lib/apt/lists/*
+# 3. 建立一個非 Root 使用者 (User ID 1000)
+# 這是 Hugging Face Spaces 最關鍵的一步！
+RUN useradd -m -u 1000 user
 
-RUN pip install --no-cache-dir -r requirements.txt
+# 4. 切換到該使用者
+USER user
 
-# 5. 複製您所有的 App 程式碼
-COPY . .
+# 5. 設定環境變數，確保 Python 能夠找到套件
+ENV HOME=/home/user \
+    PATH=/home/user/.local/bin:$PATH
 
-# 6. 告訴 HF 如何執行 (使用 7860 port)
-CMD ["solara", "run", "./pages", "--host", "0.0.0.0", "--port", "7860"]
+# 6. 複製所有程式碼到工作目錄
+# --chown=user 確保新使用者有權限讀取這些檔案
+COPY --chown=user . /code
+
+# 7. 啟動指令
+# 注意：一定要指定 host 為 0.0.0.0 和 port 為 7860
+CMD ["solara", "run", "./pages", "--host=0.0.0.0", "--port=7860"]
