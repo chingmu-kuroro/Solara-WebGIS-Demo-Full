@@ -1,0 +1,19 @@
+import solara
+import leafmap.leafmap as leafmap # 使用 ipyleaflet (重量級) 後端
+
+# 1. 定義「繁重」的地圖建立函式
+def create_map():
+    print("...正在建立地圖...")
+    m = leafmap.Map(center=[23.7, 120.9], zoom=7, layout_height="600px")
+    m.add_basemap("CartoDB.DarkMatter")
+    return m
+
+@solara.component
+def Page():
+    solara.Markdown("## 顯示 Leafmap (ipywidget)")
+    
+    # 2. 使用 use_memo 快取地圖物件
+    map_object = solara.use_memo(create_map, dependencies=[])
+    
+    # 3. 使用 .element 渲染地圖
+    return map_object.element
