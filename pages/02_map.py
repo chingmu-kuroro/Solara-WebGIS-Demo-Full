@@ -19,7 +19,7 @@ def Page():
     # 2. 使用 use_memo 快取地圖物件
     map_object = solara.use_memo(create_map, dependencies=[])
     
-    # 我們不直接 return map_object，而是建立一個 Column 來包裝它
+    # 3. 我們不直接 return map_object，而是建立一個 Column 來包裝它
     # 並且使用 solara.display() 來顯式渲染 widget
     with solara.Column(style={"width": "100%", "height": "650px"}):
         solara.display(map_object)
