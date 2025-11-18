@@ -5,3 +5,4 @@ maplibre
 rasterio
 rioxarray
 solara
+widgetsnbextension
