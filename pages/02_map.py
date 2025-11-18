@@ -3,7 +3,7 @@ import leafmap.leafmap as leafmap # 使用 ipyleaflet (重量級) 後端
 
 # 1. 定義「繁重」的地圖建立函式
 def create_map():
-    print("...正在建立地圖...")
+    #print("...正在建立地圖...")
     m = leafmap.Map(
         center=[23.7, 120.9], 
         zoom=7, 
@@ -20,4 +20,4 @@ def Page():
     map_object = solara.use_memo(create_map, dependencies=[])
     
     # 3. 使用 .element 渲染地圖
-    return map_object.element
+    return map_object.to_solara()
