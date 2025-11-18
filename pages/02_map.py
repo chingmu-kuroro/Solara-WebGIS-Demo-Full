@@ -20,4 +20,4 @@ def Page():
     map_object = solara.use_memo(create_map, dependencies=[])
     
     # 3. 使用 .element 渲染地圖
-    return map_object.to_solara()
+    return map_object.element
