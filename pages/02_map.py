@@ -4,8 +4,12 @@ import leafmap.leafmap as leafmap # 使用 ipyleaflet (重量級) 後端
 # 1. 定義「繁重」的地圖建立函式
 def create_map():
     print("...正在建立地圖...")
-    m = leafmap.Map(center=[23.7, 120.9], zoom=7, layout_height="600px")
-    m.add_basemap("CartoDB.DarkMatter")
+    m = leafmap.Map(
+        center=[23.7, 120.9], 
+        zoom=7, 
+        layout_height="600px",
+        basemap="OpenStreetMap" # 先設一個保證會成功的預設值
+    )
     return m
 
 @solara.component
