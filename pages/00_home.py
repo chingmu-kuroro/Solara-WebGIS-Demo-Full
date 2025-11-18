@@ -1,6 +1,12 @@
 import solara
 
 
+# 準備資料
+df = pd.DataFrame(
+    {"x": [1, 2, 3, 4], "y": [10, 11, 12, 13]}
+)
+fig = px.scatter(df, x="x", y="y", title="我的 Plotly 圖表")
+
 @solara.component
 def Page():
     
@@ -24,15 +30,10 @@ def Page():
 
     # 'with' 語法會自動將內部的所有元件放入 Column 容器
     with solara.Column(align="center"):
-        markdown = """
-        ## 3D Mapping with Leafmap and MapLibre
-        This is a Solara template for a 3D mapping application using Leafmap and MapLibre. Click on the menu above to see the different examples.
-        <br>
-        Source code: <https://github.com/opengeos/solara-maplibre>
-        ![image](https://github.com/user-attachments/assets/efc9e43b-99c0-40b4-af08-4971e8b96919)
-        """
-
-        solara.Markdown(markdown)
+        solara.Markdown("## 顯示 DataFrame")
+        solara.DataFrame(df)
+        solara.Markdown("## 顯示 Plotly 圖表")
+        solara.FigurePlotly(fig)
 
     
 
