@@ -1,6 +1,6 @@
 geopandas
 leafmap>=0.49.2
-mapclassify
+ipyleaflet
 maplibre
 rasterio
 rioxarray

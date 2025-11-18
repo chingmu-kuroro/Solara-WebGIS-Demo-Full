@@ -19,5 +19,5 @@ def Page():
     # 2. 使用 use_memo 快取地圖物件
     map_object = solara.use_memo(create_map, dependencies=[])
     
-    # 3. 使用 .element 渲染地圖
-    return map_object
+    # 3. 使用 .element() 渲染地圖
+    return map_object.element()
