@@ -1,4 +1,4 @@
-FROM python:3.9
+FROM python:3.11
 
 # 1. 設定工作目錄
 WORKDIR /code
@@ -15,9 +15,11 @@ RUN useradd -m -u 1000 user
 # 4. 切換到該使用者
 USER user
 
-# 5. 設定環境變數，確保 Python 能夠找到套件
+# 5. 設定環境變數
+# 加入 SOLARA_PROXY_CACHE_DIR 指向使用者的家目錄
 ENV HOME=/home/user \
-    PATH=/home/user/.local/bin:$PATH
+    PATH=/home/user/.local/bin:$PATH \
+    SOLARA_PROXY_CACHE_DIR=/home/user/.cache/solara
 
 # 6. 複製所有程式碼到工作目錄
 # --chown=user 確保新使用者有權限讀取這些檔案
