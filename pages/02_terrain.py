@@ -31,8 +31,8 @@ def create_3d_map():
         # 啟用地形：當使用 MapTiler Style 時，通常只需設定 style URL，
         # Leafmap 會自動處理 style.json 內定義的地形源。
         # 如果需要明確設定，通常是: terrain={"source": "mapbox-dem"}
-        layout_height="700px"
-    )
+        )
+    m.layout.height = "700px"
     return m
 
 @solara.component
