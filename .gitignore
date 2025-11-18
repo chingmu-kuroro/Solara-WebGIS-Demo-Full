@@ -205,3 +205,28 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ------------------------------------
+# 額外追加: Streamlit 機密檔案
+# ------------------------------------
+# 絕對不要上傳你的 API Keys 或密碼！
+.streamlit/secrets.toml
+
+
+# ------------------------------------
+# 額外追加: GIS 資料檔案
+# ------------------------------------
+# 這些檔案通常太大，不適合放進 Git
+*.tif
+*.tiff
+*.TIF
+*.TIFF
+*.asc
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+*.geojson
+*.kml
+*.gpkg
