@@ -28,6 +28,7 @@ def create_3d_map():
         zoom=9,
         pitch=65,  # 傾斜角度 (65度)
         bearing=15, # 旋轉角度 (15度)
+        exaggeration=1.5,  # 地形誇張係數
         # 啟用地形：當使用 MapTiler Style 時，通常只需設定 style URL，
         # Leafmap 會自動處理 style.json 內定義的地形源。
         # 如果需要明確設定，通常是: terrain={"source": "mapbox-dem"}
