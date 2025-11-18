@@ -14,8 +14,9 @@ def create_3d_map():
             center=[120.9, 23.7], 
             zoom=7, 
             style="OpenStreetMap",
-            layout_height="700px"
         )
+        # 這是標準的 ipywidgets 語法，對 maplibregl.Map 物件有效
+        m.layout.height = "700px"
         return m
     
     # MapTiler Outdoor-v2 Style 內建支援地形資料
