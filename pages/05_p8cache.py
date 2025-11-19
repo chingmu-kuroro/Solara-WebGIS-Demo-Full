@@ -1,4 +1,5 @@
 import solara
+import pandas as pd
 import geopandas as gpd
 import time
 
@@ -15,5 +16,9 @@ def Page():
     # 2. 使用 use_memo 來呼叫並快取結果
     gdf = solara.use_memo(load_data, dependencies=[])
 
+    # 3. 建立一個純粹的 DataFrame 副本。
+    # 移除 'geometry' 欄位，這會強制 GeoDataFrame 降級為 pandas.DataFrame。
+    display_df = gdf.drop(columns=['geometry'], errors='ignore')
+
     solara.Markdown(f"成功載入 {len(gdf)} 筆台灣縣市資料！")
-    solara.DataFrame(gdf.head())
+    solara.DataFrame(display_df) # 傳遞降級後的 DataFrame
