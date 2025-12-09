@@ -137,17 +137,21 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
             # 嘗試使用 Leafmap 的簡化參數，同時移除 layer_id
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
+                layer_id=LAYER_NAME,   # 使用 layer_id 進行命名和追蹤 (Leafmap 的功能，與 Pydantic 無關)
                 
-                # 再次嘗試移除所有衝突的關鍵字參數，讓 Leafmap 走最簡潔的路徑
-                # 如果這一步成功，地圖將會顯示 GeoJSON，但可能使用預設樣式
+                # 最終修正樣式傳遞，使用 MapLibre GL JS 兼容的參數
+                fill_color="yellow",  
+                line_color="red",
+                line_width=1,
+                fill_opacity=0.6,
                 
             )
 
         # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
         if bounds:
-            # 修正: 使用 set_bounds 進行縮放 (maplibregl 推薦方式)
+            # 修正: 由於 MapLibre GL 後端沒有 set_bounds 屬性，我們使用 fit_bounds
             # 格式: [min_lon, min_lat, max_lon, max_lat]
-            map_instance.set_bounds(bounds[0], bounds[1], bounds[2], bounds[3])
+            map_instance.fit_bounds(bounds[0], bounds[1], bounds[2], bounds[3])
     
     # 修正: maplibregl 後端必須使用 to_solara()
     return m.to_solara() 
