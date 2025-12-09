@@ -102,7 +102,7 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
             center=default_center, 
             zoom=5, # 初始縮放較小
             style="satellite", # 使用 maplibregl 內建的影像底圖
-            scroll_wheel_zoom=True
+            # CRITICAL FIX: 移除不兼容的 scroll_wheel_zoom 參數
         )
         m.layout.height = "70vh"
         return m
@@ -122,7 +122,6 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
             return
         
         # 3a. 設置/重設底圖和瓦片圖層
-        # Leafmap MapLibre 的圖層 ID 是唯一的，我們可以直接移除 GeoJSON 圖層
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
 
         # 移除舊的 GeoJSON 圖層 (如果存在)
