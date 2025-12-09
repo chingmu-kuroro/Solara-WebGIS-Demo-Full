@@ -15,7 +15,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # --- 1. 數據載入與狀態管理 (全域/模組級) ---
 
-# 假設這是您的 GeoAI 推論成果檔案 (已包含 'area_m2' 屬性)
+# 假設這是您的 GeoAI 推論成果檔案 (已包含 'area_m2' 的屬性)
 # CRITICAL FIX: 在 Hugging Face Spaces 中，靜態檔案通常直接位於根目錄 /code/。
 APP_ROOT = Path(__file__).parent.parent
 GEOJSON_FILENAME = "solar_panels_final_results.geojson"
@@ -133,25 +133,20 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
         
         if gdf is not None and not gdf.empty:
             # 最終修正: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身。
-            # 我們必須在 GeoJSON 的屬性中嵌入樣式，或使用 Leafmap 能夠識別的極簡參數。
-            # 嘗試使用 Leafmap 的簡化參數，同時移除 layer_id
+            # 我們將 GeoJSON 轉換為其字典表示，讓 MapLibre GL 使用預設樣式渲染。
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
-                layer_id=LAYER_NAME,   # 使用 layer_id 進行命名和追蹤 (Leafmap 的功能，與 Pydantic 無關)
+                layer_id=LAYER_NAME,   # 使用 layer_id 追蹤（這是 Leafmap 的功能）
                 
-                # 最終修正樣式傳遞，使用 MapLibre GL JS 兼容的參數
-                fill_color="yellow",  
-                line_color="red",
-                line_width=1,
-                fill_opacity=0.6,
-                
+                # CRITICAL FIX: 移除所有導致 Pydantic 驗證失敗的參數
+                # 樣式將是 MapLibre GL 的預設樣式（通常是灰色或線條）
             )
 
         # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
         if bounds:
-            # 修正: 由於 MapLibre GL 後端沒有 set_bounds 屬性，我們使用 fit_bounds
+            # 修正: 使用 set_bounds 進行縮放 (maplibregl 推薦方式)
             # 格式: [min_lon, min_lat, max_lon, max_lat]
-            map_instance.fit_bounds(bounds[0], bounds[1], bounds[2], bounds[3])
+            map_instance.set_bounds(bounds[0], bounds[1], bounds[2], bounds[3])
     
     # 修正: maplibregl 後端必須使用 to_solara()
     return m.to_solara() 
