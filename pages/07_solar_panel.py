@@ -1,7 +1,7 @@
 import solara
 import geopandas as gpd
 import pandas as pd
-# 修正: 改為使用 leafmap.leafmap 以啟用 SplitMap 功能 (通常基於 ipyleaflet 或 folium)
+# 使用 leafmap.leafmap 以啟用 SplitMap 功能 (通常基於 ipyleaflet 或 folium)
 import leafmap.leafmap as leafmap
 import warnings
 import os
@@ -50,14 +50,13 @@ def get_initial_data():
 all_solar_data = solara.reactive(get_initial_data())
 
 
-# 響應式計算: 根據 min_area 篩選 GeoDataFrame
-# 注意：此函數現在依賴於 Page() 元件內部傳入的 min_area.value
-@solara.use_memo      # 在元件外部，將 filtered_data 函式聲明為一個響應式計算（Reactive Calculation），並自動將 filtered_data 函式的所有參數（本例中是 min_area_value）視為其依賴項。
-def filtered_data(min_area_value):
-    # 邏輯: 由於 get_initial_data() 確保了 GeoDataFrame 實例總會被返回，
-    # 這裡只需要檢查 GeoDataFrame 是否為空即可，無需檢查 is None。
+# 篩選後的數據 (依賴於 min_area 狀態)
+# 注意：此函數依賴於 Page() 元件內部傳入的 min_area.value
+def calculate_filtered_data(min_area_value):
+    # 由於 get_initial_data() 確保了 GeoDataFrame 實例總會被返回，
+    # 這裡只需要檢查 GeoDataFrame 是否為空即可。
     if all_solar_data.value.empty: # empty指的是有物件，但為空，沒有任何資料
-        return gpd.GeoDataFrame()  # 若總數據為空 (Empty GeoJSON)，快速返回空結果，直接跳過處裡報錯訊息。【快速退出】
+        return gpd.GeoDataFrame()  # 若總數據為空 (Empty GeoJSON)，快速返回空結果，跳過 try/except。
     
     # 執行篩選 (area_m2 >= min_area)
     try:
@@ -144,9 +143,12 @@ def Page():
     # 處理多使用者的 UI 互動，如滑塊、輸入框、按鈕點擊等個人化狀態。
     min_area = solara.use_state(100.0)
 
-    # 獲取篩選後的 GeoDataFrame。
-    # 現在 filtered_data 依賴於 Page 元件內的 min_area 狀態。
-    current_filtered_data = filtered_data(min_area.value)
+    # 在元件內部使用 solara.use_memo 鉤子來記憶化計算結果。
+    # 這樣才能確保在有 render context 的情況下執行 Hook。
+    current_filtered_data = solara.use_memo(
+        lambda: calculate_filtered_data(min_area.value), 
+        dependencies=[min_area.value]
+    )
     
     # 獲取總數據量
     total_count = len(all_solar_data.value) if all_solar_data.value is not None else 0
