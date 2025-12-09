@@ -102,16 +102,18 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
         m = leafmap.Map(
             center=default_center, 
             zoom=10, 
-            # 關鍵修正：將 controls 設置為空列表，以避免 Leafmap 嘗試初始化衝突的控制項
+            # 修正: 移除 basemap 參數，讓 Leafmap 使用預設的 OpenStreetMap
             controls=[],
-            # 設置初始底圖為 Esri 影像，這會成為單一地圖的底圖
-            basemap="Esri World Imagery"
         )
         m.layout.height = "70vh"
         
-        # 關鍵修復：由於 SplitMap 不穩定，移除所有 SplitMap 相關的底圖設置
-        # 僅保留一個底圖，GeoJSON 將直接疊加在它上面
-        # 我們不再需要移除預設底圖的邏輯
+        # 關鍵修復：手動添加底圖，確保 Leafmap 能夠正確處理
+        # 移除 Leafmap 默認加載的 OpenStreetMap
+        if len(m.layers) > 0 and isinstance(m.layers[0], ipyleaflet.TileLayer):
+             m.remove_layer(m.layers[0])
+        
+        # 添加底圖 (使用標準的 Esri 影像名稱)
+        m.add_basemap("Esri.WorldImagery") 
         
         # 修正: 如果有邊界框數據，則將地圖視圖縮放至 GeoJSON 範圍
         if initial_bounds:
@@ -122,7 +124,7 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
         
     m = solara.use_memo(create_split_map, dependencies=[])
     
-    # 2. 響應式效果: 當篩選數據改變時，更新地圖右側的 GeoJSON 圖層
+    # 2. 響應式效果: 當篩選數據改變時，更新地圖圖層
     solara.use_effect(
         lambda: update_map_layer(m, current_filtered_data), 
         dependencies=[current_filtered_data]
@@ -136,9 +138,8 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
         # 定義圖層名稱
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
         
-        # 移除舊圖層 (無論是否篩選出結果)
+        # 移除舊圖層
         try:
-            # 修正: 在單一地圖模式下，移除時不再需要 right=True 參數
             map_instance.remove_layer(LAYER_NAME) 
         except Exception:
             pass
@@ -147,7 +148,6 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
         if gdf is not None and not gdf.empty:
             
             # 使用 Leafmap 的 add_gdf 方法加入向量數據
-            # 修正: 移除 right=True 參數
             map_instance.add_gdf(
                 gdf, 
                 layer_name=LAYER_NAME, 
@@ -218,7 +218,7 @@ def Page():
         solara.Markdown(
             """
             **提示：**
-            * **當前模式：單一地圖。** 由於 SplitMap 在雲端環境中極不穩定，我們改為在單一 Esri 影像底圖上直接疊加 GeoJSON 成果。
+            * **當前模式：單一地圖。** 地圖已設定為 Esri 影像底圖，並直接疊加 GeoJSON 成果。
             * 拖動滑塊即可即時篩選和更新地圖圖層，體驗空間數據的互動式分析。
             """
         )
