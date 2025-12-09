@@ -135,7 +135,8 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
             # 我們將 GeoJSON 轉換為其字典表示，讓 MapLibre GL 使用預設樣式渲染。
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
-                layer_id=LAYER_NAME,   # 使用 layer_id 追蹤（這是 Leafmap 的功能）
+                # CRITICAL FIX: 移除所有導致 Pydantic 驗證失敗的參數
+                # 樣式和 layer_id 將被 MapLibre GL 默認處理，這將是裸機 GeoJSON 疊加。
             )
 
         # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
@@ -156,6 +157,7 @@ def Page():
     min_area_value, set_min_area = solara.use_state(10.0)
     
     # FINAL FIX: 在元件內部使用 solara.use_memo 鉤子來記憶化計算結果。
+    # 修正: 將 min_area.value 修正為 min_area_value
     current_filtered_data = solara.use_memo(
         lambda: calculate_filtered_data(min_area_value), 
         dependencies=[min_area_value]
