@@ -132,17 +132,13 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
              pass
         
         if gdf is not None and not gdf.empty:
-            # CRITICAL FIX: 修正 maplibregl 樣式參數名稱，以符合 Pydantic 驗證
-            # 並且不再傳遞 layer_name 參數，而是使用 MapLibre 的 layer_id
+            # 最終修正: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身和顏色。
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
                 layer_id=LAYER_NAME,   # 使用 layer_id 進行命名和追蹤
-                style={
-                    "fill-color": "yellow",      # MapLibre 樣式
-                    "line-color": "red",         # MapLibre 樣式
-                    "line-width": 1.5,
-                    "fill-opacity": 0.6
-                }
+                color="yellow",        # 使用簡化的 color 參數
+                fill_opacity=0.6,
+                line_width=1.5
             )
 
         # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
