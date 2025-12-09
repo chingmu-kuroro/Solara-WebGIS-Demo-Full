@@ -96,8 +96,9 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
         m = leafmap.Map(
             center=default_center, 
             zoom=10, 
-            # CRITICAL FIX: 移除初始的 OpenStreetMap 圖層，以確保 SplitMap 正確啟動
-            # 這是 ipyleaflet 啟用 SplitMap 時常見的步驟
+            # 關鍵修正: 明確禁用 layer_control，避免嘗試初始化圖層管理器 (layer_widget)
+            layer_control=False, 
+            # CRITICAL FIX: 移除初始的 OpenStreetMap 圖層
             layers=[] 
         )
         m.layout.height = "70vh"
@@ -212,7 +213,7 @@ def Page():
             """
             **提示：**
             * 左側地圖顯示原始衛星影像 (Web Tiles)。
-            * 右側地圖顯示 GeoAI 推論後的 GeoJSON 成果。
+            * 右側圖台：顯示 GeoAI 推論後的 GeoJSON 成果，並啟用分割捲簾。
             * 拖動滑塊即可即時篩選和更新右側圖層，體驗空間數據的互動式分析。
             """
         )
