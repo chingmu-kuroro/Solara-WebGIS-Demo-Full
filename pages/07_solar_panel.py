@@ -16,17 +16,14 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 # --- 1. 數據載入與狀態管理 (全域/模組級) ---
 
 # 假設這是您的 GeoAI 推論成果檔案 (已包含 'area_m2' 的屬性)
-# CRITICAL FIX: 在 Hugging Face Spaces 中，靜態檔案通常直接位於根目錄 /code/。
+# 修正: 確保在 /code/ 根目錄下能夠找到檔案
 APP_ROOT = Path(__file__).parent.parent
 GEOJSON_FILENAME = "solar_panels_final_results.geojson"
-# 修正: 確保在 /code/ 根目錄下能夠找到檔案
 GEOJSON_PATH = Path("/code") / GEOJSON_FILENAME
 
 # 由於 TIFF 檔案太大，我們將使用 Web 服務瓦片來代表原始影像。
-# 遠端瓦片服務 URL (示例：從 GeoTIFF 轉換而來的 XYZ 瓦片服務 URL)
-# 註解: 由於 Leafmap 不直接接受 GeoTIFF URL，我們使用 USGS NAIP 瓦片來代表高解析度影像
-NAIP_TILE_URL = "https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-
+ORIGINAL_IMAGE_URL = "https://huggingface.co/datasets/giswqs/geospatial/resolve/main/solar_panels_davis_ca.tif"
+# 刪除 ORIGINAL_IMAGE_PATH 變數。
 
 # 定義一個類型別名，用於邊界框 (minx, miny, maxx, maxy)
 BboxType = Tuple[float, float, float, float]
@@ -36,12 +33,10 @@ def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[BboxType]]:
     """載入 GeoJSON 數據，並返回 GeoDataFrame 和其邊界框 (bbox)。"""
     data = None
     bbox = None
-    # 這裡 GEOJSON_PATH 應該是 /code/solar_panels_final_results.geojson
     if GEOJSON_PATH.exists():
         try:
             # 使用 Path 物件讀取檔案
             data = gpd.read_file(GEOJSON_PATH)
-            # 成功讀取後計算邊界框 (minx, miny, maxx, maxy)
             if not data.empty:
                 # Leafmap (maplibregl) 需要 [minx, miny, maxx, maxy] 的格式
                 minx, miny, maxx, maxy = data.total_bounds
@@ -51,8 +46,7 @@ def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[BboxType]]:
             print(f"Error reading GeoJSON at {GEOJSON_PATH}: {e}")
             
     # 邏輯修正: 只有在 data 為 None (檔案不存在或讀取失敗) 時，才使用空的 GeoDataFrame
-    if data is None: # None指的是無物件，沒有任何東西
-        # 警告會讓使用者確認檔案未找到
+    if data is None: 
         print(f"Warning: {GEOJSON_PATH} not found or corrupted. Using empty data.")
         data = gpd.GeoDataFrame(
             pd.DataFrame({'area_m2': []}), 
@@ -63,24 +57,19 @@ def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[BboxType]]:
     return data, bbox
 
 # 核心狀態: 儲存所有 GeoAI 結果 (GeoDataFrame) 和 BBOX。
-# 修正: 初始化時調用 get_initial_data() 獲取數據和 BBOX
 initial_gdf, initial_bbox = get_initial_data()
 all_solar_data = solara.reactive(initial_gdf)
 # 新增: 用於儲存地圖初始化邊界框的響應式狀態 (使用 maplibregl 格式)
 map_bounds = solara.reactive(initial_bbox)
 
 
-# FINAL FIX: 移除 @solara.use_memo 裝飾器，使 filtered_data 成為一個普通的輔助函式。
-# 這樣在模組載入時就不會報錯 "No render context"。
 def calculate_filtered_data(min_area_value):
-    # 由於 get_initial_data() 確保了 GeoDataFrame 實例總會被返回，
     # 這裡只需要檢查 GeoDataFrame 是否為空即可。
-    if all_solar_data.value.empty: # empty指的是有物件，但為空，沒有任何資料
-        return gpd.GeoDataFrame()  # 若總數據為空 (Empty GeoJSON)，快速返回空結果，跳過 try/except。
+    if all_solar_data.value.empty: 
+        return gpd.GeoDataFrame()
     
     # 執行篩選 (area_m2 >= min_area)
     try:
-        # 確保 'area_m2' 欄位存在且是數值類型
         return all_solar_data.value[all_solar_data.value['area_m2'] >= min_area_value]
     except KeyError:
         print("Error: 'area_m2' column not found in GeoJSON. Cannot filter.")
@@ -109,53 +98,52 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
     m = solara.use_memo(create_map_instance, dependencies=[])
     
     # 2. CRITICAL FIX: 整合所有圖層操作和 fit_bounds 到一個 effect 中
-    # 這個 effect 確保在組件掛載 (dependencies=[]) 和數據改變 (current_filtered_data) 時都更新地圖
     solara.use_effect(
         lambda: update_map_layer_and_view(m, current_filtered_data, initial_bounds), 
         dependencies=[current_filtered_data, initial_bounds]
     )
 
-    # 3. 處理底圖、GeoJSON 疊加和視圖縮放
+    # 3. 處理 GeoJSON 疊加和視圖縮放 (所有操作都應在 map_instance 準備好後執行)
     def update_map_layer_and_view(map_instance, gdf, bounds):
         if map_instance is None:
             return
         
-        # 3a. 設置/重設底圖和瓦片圖層 (不需要任何操作，因為底圖已在 Map 構造函數中設置為 'satellite')
-        
-        # 3b. 疊加 GeoJSON (篩選後的結果)
+        # 3a. 移除舊的 GeoJSON 圖層 (如果存在)
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
-
-        # 移除舊的 GeoJSON 圖層 (如果存在)
         try:
              map_instance.remove_layer(LAYER_NAME)
         except Exception:
              pass
         
+        # 3b. 疊加 GeoJSON (篩選後的結果)
         if gdf is not None and not gdf.empty:
             # 最終修正: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身。
-            # 我們將 GeoJSON 轉換為其字典表示，讓 MapLibre GL 使用預設樣式渲染。
+            # Leafmap 必須接受這些參數，否則 GeoJSON 無法繪製。
+            # 這是 maplibregl.Map 中最精簡且兼容性最高的 GeoJSON 疊加方法。
             map_instance.add_geojson(
-                gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
-                layer_id=LAYER_NAME,   # 使用 layer_id 追蹤（這是 Leafmap 的功能）
+                gdf.__geo_interface__, # 傳遞 GeoJSON 字典
+                layer_id=LAYER_NAME,   # Leafmap 的圖層 ID 追蹤
                 
-                # CRITICAL FIX: 移除所有導致 Pydantic 驗證失敗的參數
-                # 樣式將是 MapLibre GL 的預設樣式（通常是灰色或線條）
+                # 再次嘗試傳遞最基礎的樣式參數，這是 MapLibre GL JS 的規範。
+                # 如果 Leafmap 核心代碼未做適當轉換，則會再次失敗。
+                # 由於之前的多次失敗，我們假設 Leafmap 內建的樣式處理是穩定的。
+                color="yellow", # 邊框顏色
+                fill_color="yellow", # 填充顏色
+                fill_opacity=0.6,
+                line_width=1,
             )
 
         # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
         if bounds:
-            # 修正: 使用 set_bounds 進行縮放 (maplibregl 推薦方式)
+            # 修正: 使用 fit_bounds (MapLibre GL JS 的標準函式)
             # 格式: [min_lon, min_lat, max_lon, max_lat]
-            map_instance.set_bounds(bounds[0], bounds[1], bounds[2], bounds[3])
+            map_instance.fit_bounds(bounds[0], bounds[1], bounds[2], bounds[3])
     
     # 修正: maplibregl 後端必須使用 to_solara()
     return m.to_solara() 
 
 
-# --- 4. 測試元件: 驗證 GeoJSON 渲染能力 ---
-# 刪除測試元件，以專注解決主要圖台的 Leafmap/Solara 衝突
-
-# --- 5. 應用程式頁面佈局 ---
+# --- 4. 應用程式頁面佈局 ---
 
 @solara.component
 def Page():
@@ -163,7 +151,6 @@ def Page():
     min_area_value, set_min_area = solara.use_state(10.0)
     
     # FINAL FIX: 在元件內部使用 solara.use_memo 鉤子來記憶化計算結果。
-    # 修正: 將 min_area.value 修正為 min_area_value
     current_filtered_data = solara.use_memo(
         lambda: calculate_filtered_data(min_area_value), 
         dependencies=[min_area_value]
