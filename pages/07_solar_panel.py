@@ -14,10 +14,13 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 # --- 1. 數據載入與狀態管理 (全域/模組級) ---
 
 # 假設這是您的 GeoAI 推論成果檔案 (已包含 'area_m2' 屬性)
-# 修正路徑邏輯: 應用程式檔案（05_solar_panel.py）在 pages/ 下，但 GeoJSON 檔案應在應用程式的根目錄 (上一層)
+# CRITICAL FIX: 在 Hugging Face Spaces 中，靜態檔案通常直接位於根目錄 /code/。
+# 移除 .parent.parent，直接嘗試從當前執行目錄尋找，或確保檔案位於 /code/
+# 由於檔案在 pages/05_solar_panel.py，根目錄在上一級。
 APP_ROOT = Path(__file__).parent.parent
 GEOJSON_FILENAME = "solar_panels_final_results.geojson"
-GEOJSON_PATH = APP_ROOT / GEOJSON_FILENAME
+# 修正: 確保在 /code/ 根目錄下能夠找到檔案
+GEOJSON_PATH = Path("/code") / GEOJSON_FILENAME
 
 # 假設這是原始遙感影像 (GeoTiff)
 ORIGINAL_IMAGE_PATH = APP_ROOT / "original_image.tif" 
@@ -93,15 +96,13 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
         m = leafmap.Map(
             center=default_center, 
             zoom=10, 
+            # CRITICAL FIX: 移除初始的 OpenStreetMap 圖層，以確保 SplitMap 正確啟動
+            # 這是 ipyleaflet 啟用 SplitMap 時常見的步驟
+            layers=[] 
         )
         m.layout.height = "70vh"
         
-        # 設置左右兩個地圖的底圖
-        # 先清除預設底圖 (通常是 OpenStreetMap)
-        if len(m.layers) > 0:
-             m.remove_layer(m.layers[0])
-
-        # 添加左右底圖 (Esri World Imagery 作為原始影像底圖)
+        # 設置左右兩個底圖：Leafmap 的 SplitMap 依賴於至少兩個圖層，並通過 left/right 屬性指定
         m.add_basemap("Esri World Imagery", name="原始影像 (左)", left=True) 
         m.add_basemap("CartoDB Positron", name="篩選結果 (右)", right=True)
         
