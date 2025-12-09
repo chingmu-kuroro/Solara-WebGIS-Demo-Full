@@ -134,7 +134,9 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
             
         # 關鍵修復：手動添加 Esri World Imagery (原始影像代表)
         # 由於我們只用一個圖層，我們只添加一次
-        map_instance.add_basemap("Esri.WorldImagery") 
+        # CRITICAL: 確保只在第一次運行時添加底圖，避免無限循環
+        if len(map_instance.layers) == 0:
+            map_instance.add_basemap("Esri.WorldImagery") 
         
         # 3b. 疊加 GeoJSON
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
@@ -209,10 +211,8 @@ def Test_GeoJSON_MapView(gdf, bounds):
         if test_bounds:
             map_instance.fit_bounds(test_bounds)
     
-    return solara.Column([
-        solara.Markdown("### 🧪 GeoJSON 測試圖台 (僅用於診斷)"),
-        solara.display(m)
-    ])
+    # 修正: 讓元件只返回 solara.display，將標題移到 Page 元件中
+    return solara.display(m)
 
 
 # --- 5. 應用程式頁面佈局 ---
@@ -292,4 +292,5 @@ def Page():
         )
         
         # *** 新增測試圖台用於診斷 ***
+        solara.Markdown("---")
         Test_GeoJSON_MapView(all_solar_data.value, map_bounds.value)
