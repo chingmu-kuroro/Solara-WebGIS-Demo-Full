@@ -133,9 +133,9 @@ def GeoAI_SplitMap(current_filtered_data):
                 }
             )
 
-    # 直接返回 Leafmap 實例 m。
-    # Leafmap (ipyleaflet) 物件作為 IPython Widget，Solara 會自動渲染。
-    return m
+    # 使用 solara.display() 橋接 Leafmap (IPython Widget)
+    return solara.display(m)
+
 
 # --- 3. 應用程式頁面佈局 ---
 
