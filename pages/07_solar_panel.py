@@ -158,9 +158,16 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
 
 @solara.component
 def Page():
-    # 修正: 使用解構賦值，將狀態值和設定器分開，以避免序列化錯誤。
-    # min_area_value 才是實際的值 (e.g., 100.0)
-    min_area_value, set_min_area = solara.use_state(100.0)
+    # 修正: 將 use_state 的結果存儲到一個單一變數中。
+    min_area_state = solara.use_state(100.0)
+
+    # 獲取狀態值 (value) 和 設定器 (setter)
+    min_area_value = min_area_state[0]
+    set_min_area = min_area_state[1]
+
+    # 修正: 將狀態 tuple 轉為 solara.Reactive，以提供給 Slider 元件，避免序列化 setter 函式。
+    # 這確保了 Slider 能夠正確使用狀態，而不會將 setter 傳輸到 JSON 中。
+    min_area_reactive = solara.reactive(min_area_value, set_min_area)
 
     # FINAL FIX: 在元件內部使用 solara.use_memo 鉤子來記憶化計算結果。
     # 修正: 將 min_area.value 修正為 min_area_value
@@ -188,10 +195,10 @@ def Page():
         solara.Markdown("---")
         
         # 滑塊控制元件
-        # 修正: 將 value 設置為 (min_area_value, set_min_area) 的 Tuple
+        # 修正: 將 value 設置為 min_area_reactive，這是 Solara 推薦的響應式狀態傳遞方式。
         solara.SliderFloat(
             label=f"最小光電板面積 ({filtered_count}/{total_count} 個顯示中)", 
-            value=(min_area_value, set_min_area), 
+            value=min_area_reactive, 
             min=0.0, 
             max=max_area,
             step=10.0,
@@ -199,7 +206,7 @@ def Page():
         )
         
         # 統計資訊
-        # 修正: 將 min_area[0] 修正為 min_area_value
+        # 修正: 使用 min_area_value
         solara.Info(f"總共偵測到 **{total_count}** 個地物。目前顯示 **{filtered_count}** 個面積大於 **{min_area_value:.2f} m²** 的光電板。")
         
         solara.Markdown("## 🌐 對比圖台：左側 (原始影像) vs 右側 (篩選結果)")
