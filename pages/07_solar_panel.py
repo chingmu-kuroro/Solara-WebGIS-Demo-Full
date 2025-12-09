@@ -134,8 +134,9 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
             
         # 關鍵修復：手動添加 Esri World Imagery (原始影像代表)
         # 由於我們只用一個圖層，我們只添加一次
-        # CRITICAL: 確保只在第一次運行時添加底圖，避免無限循環
-        if len(map_instance.layers) == 0:
+        # 修正: 確保只在沒有底圖時添加
+        has_basemap = any(isinstance(layer, ipyleaflet.TileLayer) for layer in map_instance.layers)
+        if not has_basemap:
             map_instance.add_basemap("Esri.WorldImagery") 
         
         # 3b. 疊加 GeoJSON
@@ -175,6 +176,8 @@ def Test_GeoJSON_MapView(gdf, bounds):
     
     def create_test_map():
         m = leafmap.Map(
+            # 修正: 使用 OpenStreetMap 作為最穩定底圖
+            basemap="OpenStreetMap", 
             center=[23.7, 120.9], 
             zoom=5,
             controls=[]
@@ -194,6 +197,7 @@ def Test_GeoJSON_MapView(gdf, bounds):
         if map_instance is None or test_gdf.empty:
             return
         
+        # CRITICAL FIX: 移除舊圖層的邏輯，簡化為最穩定的操作
         try:
             # 移除舊圖層 (如果有)
             map_instance.remove_layer("Test_GeoJSON")
@@ -293,4 +297,5 @@ def Page():
         
         # *** 新增測試圖台用於診斷 ***
         solara.Markdown("---")
+        solara.Markdown("### 🧪 GeoJSON 測試圖台 (僅用於診斷)")
         Test_GeoJSON_MapView(all_solar_data.value, map_bounds.value)
