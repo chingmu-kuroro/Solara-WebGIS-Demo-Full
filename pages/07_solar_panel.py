@@ -22,10 +22,12 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 APP_ROOT = Path(__file__).parent.parent
 GEOJSON_FILENAME = "solar_panels_final_results.geojson"
 # 修正: 確保在 /code/ 根目錄下能夠找到檔案
+# 注意：Hugging Face Spaces 運行環境的工作目錄在 /code/，因此路徑應該是 /code/filename
 GEOJSON_PATH = Path("/code") / GEOJSON_FILENAME
 
-# 假設這是原始遙感影像 (GeoTiff)
-ORIGINAL_IMAGE_PATH = APP_ROOT / "original_image.tif" 
+# 由於 TIFF 檔案太大，我們將使用 Web 服務瓦片來代表左側的原始影像。
+ORIGINAL_IMAGE_URL = "https://huggingface.co/datasets/giswqs/geospatial/resolve/main/solar_panels_davis_ca.tif"
+ORIGINAL_IMAGE_PATH = APP_ROOT / "original_image.tif" # 僅作為占位符
 
 # 定義一個類型別名，用於邊界框 (minx, miny, maxx, maxy)
 BboxType = Tuple[float, float, float, float]
@@ -111,7 +113,7 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
              m.remove_layer(m.layers[0])
         
         # 添加 SplitMap 的兩個底圖
-        # 左側：原始影像
+        # 左側：原始影像 (使用 Esri 影像代表高解析度底圖)
         m.add_basemap("Esri World Imagery", name="原始影像 (左)", left=True) 
         # 右側：簡潔地圖，用於顯示 GeoJSON 成果
         m.add_basemap("CartoDB Positron", name="篩選結果 (右)", right=True)
