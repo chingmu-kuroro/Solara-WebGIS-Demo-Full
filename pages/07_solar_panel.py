@@ -132,13 +132,20 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
              pass
         
         if gdf is not None and not gdf.empty:
-            # 最終修正: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身和顏色。
+            # 最終修正: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身和 Leafmap 支持的參數。
+            # Leafmap 傾向於使用簡化的頂層樣式屬性，而不是 MapLibre JSON 結構。
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
-                layer_id=LAYER_NAME,   # 使用 layer_id 進行命名和追蹤
-                color="yellow",        # 使用簡化的 color 參數
+                layer_id=LAYER_NAME,   # 使用 layer_id 進行命名和追蹤 (Leafmap 的功能，與 Pydantic 無關)
+                
+                # 僅傳遞最穩定的樣式屬性，移除可能導致 Pydantic 錯誤的 'weight' 和 'opacity'
+                fill_color="yellow",  
+                line_color="red",
+                line_width=1,
                 fill_opacity=0.6,
-                line_width=1.5
+                
+                # 確保 GeoJSON 數據不會被二次驗證為 Layer 類別
+                **{"zoom_to_layer": False} # 保持 zoom_to_layer 參數
             )
 
         # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
