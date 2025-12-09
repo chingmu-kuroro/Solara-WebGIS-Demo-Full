@@ -1,14 +1,14 @@
 import solara
 import geopandas as gpd
 import pandas as pd
-# 修正: 改為使用 leafmap.leafmap 以啟用 SplitMap 功能 (通常基於 ipyleaflet 或 folium)
-import leafmap.leafmap as leafmap
+# CRITICAL FIX: 切換到 leafmap.maplibregl 後端 (更穩定且支持 to_solara)
+import leafmap.maplibregl as leafmap 
 import warnings
 import os
 from pathlib import Path
 from typing import Tuple, List, Optional, Any
-# 引入 ipyleaflet 相關元件，以便更精確地控制圖層
-import ipyleaflet
+# 移除 ipyleaflet 相關元件，因為 maplibregl 不使用它們
+# import ipyleaflet 
 
 # 忽略 geopandas/shapely 相關的未來警告
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -17,22 +17,22 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # 假設這是您的 GeoAI 推論成果檔案 (已包含 'area_m2' 屬性)
 # CRITICAL FIX: 在 Hugging Face Spaces 中，靜態檔案通常直接位於根目錄 /code/。
-# 由於檔案在 pages/05_solar_panel.py，根目錄在上一級。
 APP_ROOT = Path(__file__).parent.parent
 GEOJSON_FILENAME = "solar_panels_final_results.geojson"
 # 修正: 確保在 /code/ 根目錄下能夠找到檔案
-# 注意：Hugging Face Spaces 運行環境的工作目錄在 /code/，因此路徑應該是 /code/filename
 GEOJSON_PATH = Path("/code") / GEOJSON_FILENAME
 
-# 由於 TIFF 檔案太大，我們將使用 Web 服務瓦片來代表左側的原始影像。
-ORIGINAL_IMAGE_URL = "https://huggingface.co/datasets/giswqs/geospatial/resolve/main/solar_panels_davis_ca.tif"
-# 修正: 刪除 ORIGINAL_IMAGE_PATH 變數，因為我們已改用 URL 代表原始影像。
+# 由於 TIFF 檔案太大，我們將使用 Web 服務瓦片來代表原始影像。
+# 遠端瓦片服務 URL (示例：從 GeoTIFF 轉換而來的 XYZ 瓦片服務 URL)
+# 註解: 由於 Leafmap 不直接接受 GeoTIFF URL，我們使用 USGS NAIP 瓦片來代表高解析度影像
+NAIP_TILE_URL = "https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+
 
 # 定義一個類型別名，用於邊界框 (minx, miny, maxx, maxy)
 BboxType = Tuple[float, float, float, float]
 
 # 檢查檔案是否存在，如果不存在則創建空的 GeoDataFrame 作為 fallback
-def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[List[List[float]]]]:
+def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[BboxType]]:
     """載入 GeoJSON 數據，並返回 GeoDataFrame 和其邊界框 (bbox)。"""
     data = None
     bbox = None
@@ -43,10 +43,9 @@ def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[List[List[float]]]]:
             data = gpd.read_file(GEOJSON_PATH)
             # 成功讀取後計算邊界框 (minx, miny, maxx, maxy)
             if not data.empty:
-                # Leafmap (ipyleaflet) 需要 [[miny, minx], [maxy, maxx]] 的格式
+                # Leafmap (maplibregl) 需要 [minx, miny, maxx, maxy] 的格式
                 minx, miny, maxx, maxy = data.total_bounds
-                # Note: Leafmap 的 fit_bounds 期望的是 [[miny, minx], [maxy, maxx]]
-                bbox = [[miny, minx], [maxy, maxx]] 
+                bbox = (minx, miny, maxx, maxy)
         except Exception as e:
             # 讀取失敗，data 仍為 None
             print(f"Error reading GeoJSON at {GEOJSON_PATH}: {e}")
@@ -67,7 +66,7 @@ def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[List[List[float]]]]:
 # 修正: 初始化時調用 get_initial_data() 獲取數據和 BBOX
 initial_gdf, initial_bbox = get_initial_data()
 all_solar_data = solara.reactive(initial_gdf)
-# 新增: 用於儲存地圖初始化邊界框的響應式狀態
+# 新增: 用於儲存地圖初始化邊界框的響應式狀態 (使用 maplibregl 格式)
 map_bounds = solara.reactive(initial_bbox)
 
 
@@ -98,13 +97,12 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
     # 1. 創建 Leafmap 實例 (使用 solara.use_memo 確保只運行一次)
     def create_map_instance():
         # 預設中心點 (如果沒有 GeoJSON 數據則使用台灣中心點)
-        default_center = [23.7, 120.9] 
+        default_center = [120.9, 23.7] # maplibregl 使用 [lon, lat]
         m = leafmap.Map(
             center=default_center, 
-            zoom=10, 
-            # 關鍵修正：將 controls 設置為空列表，以避免 Leafmap 嘗試初始化衝突的控制項
-            controls=[],
-            # 移除 basemap 參數，讓 Leafmap 使用預設的 OpenStreetMap (會在 use_effect 中替換它)
+            zoom=5, # 初始縮放較小
+            style="satellite", # 使用 maplibregl 內建的影像底圖
+            scroll_wheel_zoom=True
         )
         m.layout.height = "70vh"
         return m
@@ -123,99 +121,42 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
         if map_instance is None:
             return
         
-        # 3a. 設置/重設底圖 (最終修復：只確保 Esri 影像底圖存在，不清除所有圖層)
-        BASEMAP_NAME = "Esri.WorldImagery"
-        
-        # 檢查地圖是否已經包含目標底圖
-        is_basemap_present = any(l.name == BASEMAP_NAME for l in map_instance.layers)
-
-        if not is_basemap_present:
-            # 安全地移除現有的 TileLayer (通常是預設的 OpenStreetMap)
-            for layer in list(map_instance.layers):
-                if isinstance(layer, ipyleaflet.TileLayer):
-                    map_instance.remove_layer(layer)
-            
-            # 添加目標底圖
-            map_instance.add_basemap(BASEMAP_NAME)
-        
-        # 3b. 疊加 GeoJSON
+        # 3a. 設置/重設底圖和瓦片圖層
+        # Leafmap MapLibre 的圖層 ID 是唯一的，我們可以直接移除 GeoJSON 圖層
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
+
+        # 移除舊的 GeoJSON 圖層 (如果存在)
+        try:
+             map_instance.remove_layer(LAYER_NAME)
+        except Exception:
+             pass
         
-        # 移除舊的 GeoJSON 圖層
-        for layer in list(map_instance.layers):
-             if layer.name == LAYER_NAME:
-                 map_instance.remove_layer(layer)
-                 break
-            
+        # 3b. 疊加 GeoJSON (篩選後的結果)
         if gdf is not None and not gdf.empty:
-            # 使用 Leafmap 的 add_gdf 方法加入向量數據
-            map_instance.add_gdf(
-                gdf, 
+            # 修正: 使用 maplibregl 的 add_geojson 
+            map_instance.add_geojson(
+                gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
                 layer_name=LAYER_NAME, 
                 style_function={
-                    "fillColor": "#FFD700", 
-                    "color": "#FF4500",      
+                    "fill_color": "yellow",  # 使用 maplibregl 顏色
+                    "color": "red",          # 邊框
                     "weight": 1.5,
-                    "fillOpacity": 0.6
+                    "opacity": 0.6
                 }
             )
 
         # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
         if bounds:
-            # 修正: 移除不兼容的 'padding' 參數
-            map_instance.fit_bounds(bounds) 
+            # 修正: 使用 set_bounds 進行縮放 (maplibregl 推薦方式)
+            # 格式: [min_lon, min_lat, max_lon, max_lat]
+            map_instance.set_bounds(bounds[0], bounds[1], bounds[2], bounds[3])
     
-    # 修正: 使用 solara.display() 橋接 Leafmap (IPython Widget)
-    return solara.display(m)
+    # 修正: maplibregl 後端必須使用 to_solara()
+    return m.to_solara() 
+
 
 # --- 4. 測試元件: 驗證 GeoJSON 渲染能力 ---
-@solara.component
-def Test_GeoJSON_MapView(gdf, bounds):
-    """用於單獨測試 GeoJSON 是否能成功顯示和縮放的暫時性元件。"""
-    
-    def create_test_map():
-        m = leafmap.Map(
-            # 修正: 將底圖改為 Esri World Imagery 以符合視覺化需求
-            basemap="Esri.WorldImagery", 
-            center=[23.7, 120.9], 
-            zoom=5,
-            controls=[]
-        )
-        m.layout.height = "300px"
-        return m
-
-    m = solara.use_memo(create_test_map, dependencies=[])
-
-    # 在地圖初始化後，添加數據並縮放
-    solara.use_effect(
-        lambda: add_test_data_and_fit(m, gdf, bounds), 
-        dependencies=[bounds]
-    )
-
-    def add_test_data_and_fit(map_instance, test_gdf, test_bounds):
-        if map_instance is None or test_gdf.empty:
-            return
-        
-        # 移除舊圖層 (如果有)
-        for layer in list(map_instance.layers):
-             if layer.name == "Test_GeoJSON":
-                 map_instance.remove_layer(layer)
-            
-        # 疊加 GeoJSON
-        map_instance.add_gdf(
-            test_gdf, 
-            layer_name="Test_GeoJSON",
-            style_function={"color": "blue", "fillOpacity": 0.3}
-        )
-        
-        # 執行縮放
-        if test_bounds:
-            # 修正: 移除不兼容的 'padding' 參數
-            map_instance.fit_bounds(test_bounds)
-    
-    # 修正: 讓元件只返回 solara.display，將標題移到 Page 元件中
-    return solara.display(m)
-
+# 刪除測試元件，以專注解決主要圖台的 Leafmap/Solara 衝突
 
 # --- 5. 應用程式頁面佈局 ---
 
@@ -274,7 +215,7 @@ def Page():
         solara.Markdown(
             """
             **提示：**
-            * **單一地圖模式：** 地圖已設定為 Esri 影像底圖，並直接疊加 GeoJSON 成果。
+            * **單一地圖模式：** 地圖已設定為高解析度影像底圖，並直接疊加 GeoJSON 成果，圖幅已自動縮放至數據範圍。
             * 拖動滑塊即可即時篩選和更新地圖圖層，體驗空間數據的互動式分析。
             """
         )
@@ -292,8 +233,3 @@ def Page():
             disabled=filtered_count == 0,
             icon_name="download"
         )
-        
-        # *** 新增測試圖台用於診斷 ***
-        solara.Markdown("---")
-        solara.Markdown("### 🧪 GeoJSON 測試圖台 (僅用於診斷)")
-        Test_GeoJSON_MapView(all_solar_data.value, map_bounds.value)
