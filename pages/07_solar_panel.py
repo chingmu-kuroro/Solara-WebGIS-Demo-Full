@@ -141,13 +141,13 @@ def GeoAI_SplitMap(current_filtered_data):
 def Page():
     # 將 min_area 狀態移入 Page 元件，符合 Solara/Hook 規範。
     # 處理多使用者的 UI 互動，如滑塊、輸入框、按鈕點擊等個人化狀態。
-    min_area = solara.use_state(100.0)
+    min_area_value, set_min_area = solara.use_state(100.0)
 
     # 在元件內部使用 solara.use_memo 鉤子來記憶化計算結果。
     # 這樣才能確保在有 render context 的情況下執行 Hook。
     current_filtered_data = solara.use_memo(
-        lambda: calculate_filtered_data(min_area.value), 
-        dependencies=[min_area.value]
+        lambda: calculate_filtered_data(min_area_value), 
+        dependencies=[min_area_value]
     )
     
     # 獲取總數據量
@@ -171,7 +171,7 @@ def Page():
         # 滑塊控制元件
         solara.SliderFloat(
             label=f"最小光電板面積 ({filtered_count}/{total_count} 個顯示中)", 
-            value=min_area, 
+            value=min_area_value, 
             min=0.0, 
             max=max_area,
             step=10.0,
