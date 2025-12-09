@@ -102,36 +102,47 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
         m = leafmap.Map(
             center=default_center, 
             zoom=10, 
-            # 修正: 移除 basemap 參數，讓 Leafmap 使用預設的 OpenStreetMap
+            # 關鍵修正：將 controls 設置為空列表，以避免 Leafmap 嘗試初始化衝突的控制項
             controls=[],
+            # 移除 basemap 參數，讓 Leafmap 使用預設的 OpenStreetMap (我們會在 use_effect 中替換它)
         )
         m.layout.height = "70vh"
-        
-        # 關鍵修復：手動添加底圖，確保 Leafmap 能夠正確處理
-        # 移除 Leafmap 默認加載的 OpenStreetMap
-        if len(m.layers) > 0 and isinstance(m.layers[0], ipyleaflet.TileLayer):
-             m.remove_layer(m.layers[0])
-        
-        # 添加底圖 (使用標準的 Esri 影像名稱)
-        m.add_basemap("Esri.WorldImagery") 
-        
-        # 修正: 如果有邊界框數據，則將地圖視圖縮放至 GeoJSON 範圍
-        if initial_bounds:
-            # Leafmap 的 fit_bounds 接受 [[miny, minx], [maxy, maxx]] 格式
-            m.fit_bounds(initial_bounds) 
-            
         return m
         
     m = solara.use_memo(create_split_map, dependencies=[])
     
-    # 2. 響應式效果: 當篩選數據改變時，更新地圖圖層
+    # 2. 響應式效果: 僅在組件掛載時執行一次，用於設定底圖和初始視圖
     solara.use_effect(
-        lambda: update_map_layer(m, current_filtered_data), 
+        lambda: set_initial_view_and_basemap(m, initial_bounds), 
+        dependencies=[] # 僅在第一次渲染後執行
+    )
+
+    # 3. 響應式效果: 當篩選數據改變時，更新地圖 GeoJSON 圖層
+    solara.use_effect(
+        lambda: update_geojson_layer(m, current_filtered_data), 
         dependencies=[current_filtered_data]
     )
+
+    # 4. 處理底圖和初始視圖設置
+    def set_initial_view_and_basemap(map_instance, bounds):
+        if map_instance is None:
+            return
+
+        # 移除 Leafmap 默認加載的 OpenStreetMap
+        if len(map_instance.layers) > 0 and isinstance(map_instance.layers[0], ipyleaflet.TileLayer):
+             map_instance.remove_layer(map_instance.layers[0])
+        
+        # 添加底圖 (使用標準的 Esri 影像名稱)
+        # 這是左側/原始影像的替代方案
+        map_instance.add_basemap("Esri.WorldImagery") 
+        
+        # 修正: 如果有邊界框數據，則將地圖視圖縮放至 GeoJSON 範圍
+        if bounds:
+            # Leafmap 的 fit_bounds 接受 [[miny, minx], [maxy, maxx]] 格式
+            map_instance.fit_bounds(bounds)
     
-    # 3. 處理地圖更新邏輯
-    def update_map_layer(map_instance, gdf):
+    # 5. 處理 GeoJSON 圖層更新邏輯 (與 set_initial_view_and_basemap 分離)
+    def update_geojson_layer(map_instance, gdf):
         if map_instance is None:
             return
         
@@ -218,7 +229,7 @@ def Page():
         solara.Markdown(
             """
             **提示：**
-            * **當前模式：單一地圖。** 地圖已設定為 Esri 影像底圖，並直接疊加 GeoJSON 成果。
+            * **單一地圖模式：** 地圖已設定為 Esri 影像底圖，並直接疊加 GeoJSON 成果。
             * 拖動滑塊即可即時篩選和更新地圖圖層，體驗空間數據的互動式分析。
             """
         )
