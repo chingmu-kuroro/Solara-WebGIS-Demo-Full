@@ -133,14 +133,17 @@ def GeoAI_SplitMap(current_filtered_data):
                 }
             )
 
-    return m.to_solara() # Solara 渲染地圖
+    # 直接返回 Leafmap 實例 m。
+    # Leafmap (ipyleaflet) 物件作為 IPython Widget，Solara 會自動渲染。
+    return m
 
 # --- 3. 應用程式頁面佈局 ---
 
 @solara.component
 def Page():
-    # 將 min_area 狀態移入 Page 元件，符合 Solara/Hook 規範。
+    # 移入 Page 元件，符合 Solara/Hook 規範。
     # 處理多使用者的 UI 互動，如滑塊、輸入框、按鈕點擊等個人化狀態。
+    # solara.use_state(100) 返回 (value, setter) 的 tuple，例如 (100.0, function)
     min_area_value, set_min_area = solara.use_state(100.0)
 
     # 在元件內部使用 solara.use_memo 鉤子來記憶化計算結果。
