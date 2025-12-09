@@ -123,28 +123,30 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
         if map_instance is None:
             return
         
-        # 3a. 設置/重設底圖
-        # 刪除所有 Layers (只保留 Leafmap 內建的 OpenStreetMap，如果它存在的話)
-        # CRITICAL: 簡化圖層清除邏輯
-        for layer in list(map_instance.layers):
-             map_instance.remove_layer(layer)
+        # 3a. 設置/重設底圖 (最終修復：只確保 Esri 影像底圖存在，不清除所有圖層)
+        BASEMAP_NAME = "Esri.WorldImagery"
+        
+        # 檢查地圖是否已經包含目標底圖
+        is_basemap_present = any(l.name == BASEMAP_NAME for l in map_instance.layers)
+
+        if not is_basemap_present:
+            # 安全地移除現有的 TileLayer (通常是預設的 OpenStreetMap)
+            for layer in list(map_instance.layers):
+                if isinstance(layer, ipyleaflet.TileLayer):
+                    map_instance.remove_layer(layer)
             
-        # 關鍵修復：手動添加 Esri World Imagery (原始影像代表)
-        # 由於我們只用一個圖層，我們只添加一次
-        # 修正: 確保只在沒有底圖時添加
-        has_basemap = any(isinstance(layer, ipyleaflet.TileLayer) for layer in map_instance.layers)
-        if not has_basemap:
-            map_instance.add_basemap("Esri.WorldImagery") 
+            # 添加目標底圖
+            map_instance.add_basemap(BASEMAP_NAME)
         
         # 3b. 疊加 GeoJSON
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
         
-        # 移除舊的 GeoJSON 圖層 (儘管上一步已經清空，這是保險措施)
-        try:
-             map_instance.remove_layer(LAYER_NAME)
-        except Exception:
-             pass
-        
+        # 移除舊的 GeoJSON 圖層
+        for layer in list(map_instance.layers):
+             if layer.name == LAYER_NAME:
+                 map_instance.remove_layer(layer)
+                 break
+            
         if gdf is not None and not gdf.empty:
             # 使用 Leafmap 的 add_gdf 方法加入向量數據
             map_instance.add_gdf(
@@ -173,8 +175,8 @@ def Test_GeoJSON_MapView(gdf, bounds):
     
     def create_test_map():
         m = leafmap.Map(
-            # 修正: 使用 OpenStreetMap 作為最穩定底圖
-            basemap="OpenStreetMap", 
+            # 修正: 將底圖改為 Esri World Imagery 以符合視覺化需求
+            basemap="Esri.WorldImagery", 
             center=[23.7, 120.9], 
             zoom=5,
             controls=[]
