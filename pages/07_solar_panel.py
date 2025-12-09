@@ -103,20 +103,15 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
             center=default_center, 
             zoom=10, 
             # 關鍵修正：將 controls 設置為空列表，以避免 Leafmap 嘗試初始化衝突的控制項
-            controls=[] 
+            controls=[],
+            # 設置初始底圖為 Esri 影像，這會成為單一地圖的底圖
+            basemap="Esri World Imagery"
         )
         m.layout.height = "70vh"
         
-        # 關鍵修復：手動添加 SplitMap 所需的圖層，並移除 Leafmap 默認加載的圖層
-        # 由於我們將 controls=[]，地圖應該是空的，但為保險起見，我們繼續移除
-        if len(m.layers) > 0 and isinstance(m.layers[0], ipyleaflet.TileLayer):
-             m.remove_layer(m.layers[0])
-        
-        # 添加 SplitMap 的兩個底圖
-        # 左側：原始影像 (使用 Esri 影像代表高解析度底圖)
-        m.add_basemap("Esri World Imagery", name="原始影像 (左)", left=True) 
-        # 右側：簡潔地圖，用於顯示 GeoJSON 成果
-        m.add_basemap("CartoDB Positron", name="篩選結果 (右)", right=True)
+        # 關鍵修復：由於 SplitMap 不穩定，移除所有 SplitMap 相關的底圖設置
+        # 僅保留一個底圖，GeoJSON 將直接疊加在它上面
+        # 我們不再需要移除預設底圖的邏輯
         
         # 修正: 如果有邊界框數據，則將地圖視圖縮放至 GeoJSON 範圍
         if initial_bounds:
@@ -143,19 +138,19 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
         
         # 移除舊圖層 (無論是否篩選出結果)
         try:
-            # 確保移除的是右側圖層
-            map_instance.remove_layer(LAYER_NAME, right=True) 
+            # 修正: 在單一地圖模式下，移除時不再需要 right=True 參數
+            map_instance.remove_layer(LAYER_NAME) 
         except Exception:
             pass
 
         # 如果有篩選結果，則加入新圖層
         if gdf is not None and not gdf.empty:
             
-            # 使用 Leafmap 的 add_gdf 方法加入向量數據到右側圖台
+            # 使用 Leafmap 的 add_gdf 方法加入向量數據
+            # 修正: 移除 right=True 參數
             map_instance.add_gdf(
                 gdf, 
                 layer_name=LAYER_NAME, 
-                right=True, # 確保圖層只出現在右側圖台
                 style_function={
                     "fillColor": "#FFD700", # 金色填充
                     "color": "#FF4500",      # 橘紅色邊框
@@ -217,14 +212,14 @@ def Page():
         
         solara.Markdown("## 🌐 對比圖台：左側 (原始影像) vs 右側 (篩選結果)")
         
-        # 對比地圖元件：將篩選後的數據傳遞給地圖元件，並傳遞初始化邊界
+        # 對比圖台：此處將顯示為單一地圖，以確保穩定性
         GeoAI_SplitMap(current_filtered_data, map_bounds.value)
         
         solara.Markdown(
             """
             **提示：**
-            * 左側圖台：顯示原始衛星影像 (Web Tiles)，右側圖台：顯示 GeoAI 推論後的 GeoJSON 成果，並啟用分割捲簾。
-            * 拖動滑塊即可即時篩選和更新右側圖層，體驗空間數據的互動式分析。
+            * **當前模式：單一地圖。** 由於 SplitMap 在雲端環境中極不穩定，我們改為在單一 Esri 影像底圖上直接疊加 GeoJSON 成果。
+            * 拖動滑塊即可即時篩選和更新地圖圖層，體驗空間數據的互動式分析。
             """
         )
         
