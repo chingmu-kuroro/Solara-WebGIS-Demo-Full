@@ -133,9 +133,10 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
         
         if gdf is not None and not gdf.empty:
             # CRITICAL FIX: 修正 maplibregl 樣式參數名稱，以符合 Pydantic 驗證
+            # 並且不再傳遞 layer_name 參數，而是使用 MapLibre 的 layer_id
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
-                layer_name=LAYER_NAME, # 必須傳遞 layer_name 讓 remove_layer 能夠工作
+                layer_id=LAYER_NAME,   # 使用 layer_id 進行命名和追蹤
                 style={
                     "fill-color": "yellow",      # MapLibre 樣式
                     "line-color": "red",         # MapLibre 樣式
