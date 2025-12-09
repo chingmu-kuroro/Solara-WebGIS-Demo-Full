@@ -130,7 +130,11 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
              map_instance.remove_layer(layer)
             
         # 關鍵修復：手動添加 Esri World Imagery (原始影像代表)
-        map_instance.add_basemap("Esri.WorldImagery") 
+        # 由於我們只用一個圖層，我們只添加一次
+        # 修正: 確保只在沒有底圖時添加
+        has_basemap = any(isinstance(layer, ipyleaflet.TileLayer) for layer in map_instance.layers)
+        if not has_basemap:
+            map_instance.add_basemap("Esri.WorldImagery") 
         
         # 3b. 疊加 GeoJSON
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
@@ -156,10 +160,8 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
 
         # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
         if bounds:
-            # Leafmap 的 fit_bounds 接受 [[miny, minx], [maxy, maxx]] 格式
-            # 增加一個延遲呼叫，確保 Leaflet 實例完全初始化
-            # Note: ipyleaflet 有時需要幾毫秒才能讓 JS 端準備好
-            map_instance.fit_bounds(bounds, padding=[10, 10]) # 增加 padding 讓邊界更美觀
+            # 修正: 移除不兼容的 'padding' 參數
+            map_instance.fit_bounds(bounds) 
     
     # 修正: 使用 solara.display() 橋接 Leafmap (IPython Widget)
     return solara.display(m)
@@ -206,8 +208,8 @@ def Test_GeoJSON_MapView(gdf, bounds):
         
         # 執行縮放
         if test_bounds:
-            # CRITICAL FIX: 執行 fit_bounds
-            map_instance.fit_bounds(test_bounds, padding=[10, 10])
+            # 修正: 移除不兼容的 'padding' 參數
+            map_instance.fit_bounds(test_bounds)
     
     # 修正: 讓元件只返回 solara.display，將標題移到 Page 元件中
     return solara.display(m)
