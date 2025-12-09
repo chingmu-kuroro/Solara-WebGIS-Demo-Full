@@ -96,14 +96,15 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
         m = leafmap.Map(
             center=default_center, 
             zoom=10, 
-            # 關鍵修正: 明確禁用 layer_control，避免嘗試初始化圖層管理器 (layer_widget)
-            layer_control=False, 
-            # CRITICAL FIX: 移除初始的 OpenStreetMap 圖層
-            layers=[] 
+            # 修正: 移除 layer_control=False 和 layers=[] 參數，讓 Leafmap 走預設初始化路徑
         )
         m.layout.height = "70vh"
         
         # 設置左右兩個底圖：Leafmap 的 SplitMap 依賴於至少兩個圖層，並通過 left/right 屬性指定
+        # 由於 Leafmap 默認加載了 OpenStreetMap，我們需要先移除它
+        if len(m.layers) > 0:
+             m.remove_layer(m.layers[0])
+
         m.add_basemap("Esri World Imagery", name="原始影像 (左)", left=True) 
         m.add_basemap("CartoDB Positron", name="篩選結果 (右)", right=True)
         
