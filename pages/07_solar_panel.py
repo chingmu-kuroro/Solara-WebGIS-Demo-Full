@@ -35,6 +35,7 @@ def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[List[List[float]]]]:
     """載入 GeoJSON 數據，並返回 GeoDataFrame 和其邊界框 (bbox)。"""
     data = None
     bbox = None
+    # 這裡 GEOJSON_PATH 應該是 /code/solar_panels_final_results.geojson
     if GEOJSON_PATH.exists():
         try:
             # 使用 Path 物件讀取檔案
@@ -99,13 +100,13 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
         m = leafmap.Map(
             center=default_center, 
             zoom=10, 
-            # 確保不啟用內建的圖層管理器，避免與 Solara 衝突
-            layer_control=False 
+            # 關鍵修正：將 controls 設置為空列表，以避免 Leafmap 嘗試初始化衝突的控制項
+            controls=[] 
         )
         m.layout.height = "70vh"
         
         # 關鍵修復：手動添加 SplitMap 所需的圖層，並移除 Leafmap 默認加載的圖層
-        # Leafmap 默認會加載一個 OpenStreetMap TileLayer，我們需要移除它
+        # 由於我們將 controls=[]，地圖應該是空的，但為保險起見，我們繼續移除
         if len(m.layers) > 0 and isinstance(m.layers[0], ipyleaflet.TileLayer):
              m.remove_layer(m.layers[0])
         
@@ -148,11 +149,11 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
         # 如果有篩選結果，則加入新圖層
         if gdf is not None and not gdf.empty:
             
-            # 使用 Leafmap 的 add_gdf 方法加入向量數據到右側地圖
+            # 使用 Leafmap 的 add_gdf 方法加入向量數據到右側圖台
             map_instance.add_gdf(
                 gdf, 
                 layer_name=LAYER_NAME, 
-                right=True, # 確保圖層只出現在右側圖層
+                right=True, # 確保圖層只出現在右側圖台
                 style_function={
                     "fillColor": "#FFD700", # 金色填充
                     "color": "#FF4500",      # 橘紅色邊框
