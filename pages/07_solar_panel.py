@@ -208,6 +208,6 @@ def Page():
                 mime_type="application/json"
             ),
             disabled=filtered_count == 0,
-            icon="download"
+            icon_name="download"
         )
  
