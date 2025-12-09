@@ -17,7 +17,6 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # 假設這是您的 GeoAI 推論成果檔案 (已包含 'area_m2' 屬性)
 # CRITICAL FIX: 在 Hugging Face Spaces 中，靜態檔案通常直接位於根目錄 /code/。
-# 移除 .parent.parent，直接嘗試從當前執行目錄尋找，或確保檔案位於 /code/
 # 由於檔案在 pages/05_solar_panel.py，根目錄在上一級。
 APP_ROOT = Path(__file__).parent.parent
 GEOJSON_FILENAME = "solar_panels_final_results.geojson"
@@ -27,7 +26,7 @@ GEOJSON_PATH = Path("/code") / GEOJSON_FILENAME
 
 # 由於 TIFF 檔案太大，我們將使用 Web 服務瓦片來代表左側的原始影像。
 ORIGINAL_IMAGE_URL = "https://huggingface.co/datasets/giswqs/geospatial/resolve/main/solar_panels_davis_ca.tif"
-ORIGINAL_IMAGE_PATH = APP_ROOT / "original_image.tif" # 僅作為占位符
+# 修正: 刪除 ORIGINAL_IMAGE_PATH 變數，因為我們已改用 URL 代表原始影像。
 
 # 定義一個類型別名，用於邊界框 (minx, miny, maxx, maxy)
 BboxType = Tuple[float, float, float, float]
@@ -125,19 +124,25 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
             return
         
         # 3a. 設置/重設底圖
-        # 移除所有 Layers (除了 Leafmap 內建的 OpenStreetMap，如果它存在的話)
+        # 移除所有 Layers (只保留 Leafmap 內建的 OpenStreetMap，如果它存在的話)
         while len(map_instance.layers) > 0:
             map_instance.remove_layer(map_instance.layers[0])
             
-        # 添加 Esri World Imagery 作為底圖 (左側影像的代表)
+        # 關鍵修復：手動添加 Esri World Imagery (原始影像代表)
+        # Leafmap 的 add_basemap 會自動替換底圖
         map_instance.add_basemap("Esri.WorldImagery") 
         
         # 3b. 疊加 GeoJSON
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
         
+        # 移除舊的 GeoJSON 圖層 (即使名字相同，Leafmap 有時會保留舊的引用)
+        try:
+             map_instance.remove_layer(LAYER_NAME)
+        except Exception:
+             pass
+        
         if gdf is not None and not gdf.empty:
             # 使用 Leafmap 的 add_gdf 方法加入向量數據
-            # 注意: 如果圖層已存在，add_gdf 會自動處理更新
             map_instance.add_gdf(
                 gdf, 
                 layer_name=LAYER_NAME, 
@@ -162,7 +167,7 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
 @solara.component
 def Page():
     # 修正: 使用 solara.use_state 解構，將狀態值和設定器分開。
-    min_area_value, set_min_area = solara.use_state(100.0)
+    min_area_value, set_min_area = solara.use_state(10.0)
     
     # FINAL FIX: 在元件內部使用 solara.use_memo 鉤子來記憶化計算結果。
     # 修正: 將 min_area.value 修正為 min_area_value
