@@ -102,7 +102,6 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
             center=default_center, 
             zoom=5, # 初始縮放較小
             style="satellite", # 使用 maplibregl 內建的影像底圖
-            # CRITICAL FIX: 移除不兼容的 scroll_wheel_zoom 參數
         )
         m.layout.height = "70vh"
         return m
@@ -132,11 +131,11 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
         
         # 3b. 疊加 GeoJSON (篩選後的結果)
         if gdf is not None and not gdf.empty:
-            # 修正: 使用 maplibregl 的 add_geojson 
+            # 修正: 使用 maplibregl 的 add_geojson，並移除不兼容的 layer_name 和 style_function 參數。
+            # 樣式必須直接在 style 屬性中傳遞。
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
-                layer_name=LAYER_NAME, 
-                style_function={
+                style={
                     "fill_color": "yellow",  # 使用 maplibregl 顏色
                     "color": "red",          # 邊框
                     "weight": 1.5,
