@@ -46,6 +46,7 @@ def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[List[List[float]]]]:
             if not data.empty:
                 # Leafmap (ipyleaflet) 需要 [[miny, minx], [maxy, maxx]] 的格式
                 minx, miny, maxx, maxy = data.total_bounds
+                # Note: Leafmap 的 fit_bounds 期望的是 [[miny, minx], [maxy, maxx]]
                 bbox = [[miny, minx], [maxy, maxx]] 
         except Exception as e:
             # 讀取失敗，data 仍為 None
@@ -93,10 +94,10 @@ def calculate_filtered_data(min_area_value):
 # --- 2. Leafmap 地圖元件 ---
 
 @solara.component
-def GeoAI_SplitMap(current_filtered_data, initial_bounds):
+def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
     
     # 1. 創建 Leafmap 實例 (使用 solara.use_memo 確保只運行一次)
-    def create_split_map():
+    def create_map_instance():
         # 預設中心點 (如果沒有 GeoJSON 數據則使用台灣中心點)
         default_center = [23.7, 120.9] 
         m = leafmap.Map(
@@ -104,72 +105,55 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
             zoom=10, 
             # 關鍵修正：將 controls 設置為空列表，以避免 Leafmap 嘗試初始化衝突的控制項
             controls=[],
-            # 移除 basemap 參數，讓 Leafmap 使用預設的 OpenStreetMap (我們會在 use_effect 中替換它)
+            # 移除 basemap 參數，讓 Leafmap 使用預設的 OpenStreetMap (會在 use_effect 中替換它)
         )
         m.layout.height = "70vh"
         return m
         
-    m = solara.use_memo(create_split_map, dependencies=[])
+    m = solara.use_memo(create_map_instance, dependencies=[])
     
-    # 2. 響應式效果: 僅在組件掛載時執行一次，用於設定底圖和初始視圖
+    # 2. CRITICAL FIX: 整合所有圖層操作和 fit_bounds 到一個 effect 中
+    # 這個 effect 確保在組件掛載 (dependencies=[]) 和數據改變 (current_filtered_data) 時都更新地圖
     solara.use_effect(
-        lambda: set_initial_view_and_basemap(m, initial_bounds), 
-        dependencies=[] # 僅在第一次渲染後執行
+        lambda: update_map_layer_and_view(m, current_filtered_data, initial_bounds), 
+        dependencies=[current_filtered_data, initial_bounds]
     )
 
-    # 3. 響應式效果: 當篩選數據改變時，更新地圖 GeoJSON 圖層
-    solara.use_effect(
-        lambda: update_geojson_layer(m, current_filtered_data), 
-        dependencies=[current_filtered_data]
-    )
-
-    # 4. 處理底圖和初始視圖設置
-    def set_initial_view_and_basemap(map_instance, bounds):
+    # 3. 處理底圖、GeoJSON 疊加和視圖縮放
+    def update_map_layer_and_view(map_instance, gdf, bounds):
         if map_instance is None:
             return
-
-        # 移除 Leafmap 默認加載的 OpenStreetMap
-        if len(map_instance.layers) > 0 and isinstance(map_instance.layers[0], ipyleaflet.TileLayer):
-             map_instance.remove_layer(map_instance.layers[0])
         
-        # 添加底圖 (使用標準的 Esri 影像名稱)
-        # 這是左側/原始影像的替代方案
+        # 3a. 設置/重設底圖
+        # 移除所有 Layers (除了 Leafmap 內建的 OpenStreetMap，如果它存在的話)
+        while len(map_instance.layers) > 0:
+            map_instance.remove_layer(map_instance.layers[0])
+            
+        # 添加 Esri World Imagery 作為底圖 (左側影像的代表)
         map_instance.add_basemap("Esri.WorldImagery") 
         
-        # 修正: 如果有邊界框數據，則將地圖視圖縮放至 GeoJSON 範圍
-        if bounds:
-            # Leafmap 的 fit_bounds 接受 [[miny, minx], [maxy, maxx]] 格式
-            map_instance.fit_bounds(bounds)
-    
-    # 5. 處理 GeoJSON 圖層更新邏輯 (與 set_initial_view_and_basemap 分離)
-    def update_geojson_layer(map_instance, gdf):
-        if map_instance is None:
-            return
-        
-        # 定義圖層名稱
+        # 3b. 疊加 GeoJSON
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
         
-        # 移除舊圖層
-        try:
-            map_instance.remove_layer(LAYER_NAME) 
-        except Exception:
-            pass
-
-        # 如果有篩選結果，則加入新圖層
         if gdf is not None and not gdf.empty:
-            
             # 使用 Leafmap 的 add_gdf 方法加入向量數據
+            # 注意: 如果圖層已存在，add_gdf 會自動處理更新
             map_instance.add_gdf(
                 gdf, 
                 layer_name=LAYER_NAME, 
                 style_function={
-                    "fillColor": "#FFD700", # 金色填充
-                    "color": "#FF4500",      # 橘紅色邊框
+                    "fillColor": "#FFD700", 
+                    "color": "#FF4500",      
                     "weight": 1.5,
                     "fillOpacity": 0.6
                 }
             )
 
+        # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
+        if bounds:
+            # Leafmap 的 fit_bounds 接受 [[miny, minx], [maxy, maxx]] 格式
+            map_instance.fit_bounds(bounds)
+    
     # 修正: 使用 solara.display() 橋接 Leafmap (IPython Widget)
     return solara.display(m)
 
@@ -221,10 +205,11 @@ def Page():
         # 修正: 使用 min_area_value
         solara.Info(f"總共偵測到 **{total_count}** 個地物。目前顯示 **{filtered_count}** 個面積大於 **{min_area_value:.2f} m²** 的光電板。")
         
-        solara.Markdown("## 🌐 對比圖台：左側 (原始影像) vs 右側 (篩選結果)")
+        # 修正文字
+        solara.Markdown("## 🌐 GeoAI 成果視覺化：影像與向量")
         
-        # 對比圖台：此處將顯示為單一地圖，以確保穩定性
-        GeoAI_SplitMap(current_filtered_data, map_bounds.value)
+        # 修正元件名稱
+        GeoAI_MapView(current_filtered_data, map_bounds.value)
         
         solara.Markdown(
             """
