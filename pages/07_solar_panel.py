@@ -124,18 +124,22 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
             return
         
         # 3a. 設置/重設底圖
-        # 移除所有 Layers (只保留 Leafmap 內建的 OpenStreetMap，如果它存在的話)
-        while len(map_instance.layers) > 0:
-            map_instance.remove_layer(map_instance.layers[0])
+        # 刪除除了 Leafmap 內建的 OpenStreetMap 以外的所有圖層
+        for layer in list(map_instance.layers):
+            if not isinstance(layer, ipyleaflet.TileLayer) or layer.name != 'OpenStreetMap':
+                try:
+                    map_instance.remove_layer(layer)
+                except Exception:
+                    pass
             
         # 關鍵修復：手動添加 Esri World Imagery (原始影像代表)
-        # Leafmap 的 add_basemap 會自動替換底圖
+        # 由於我們只用一個圖層，我們只添加一次
         map_instance.add_basemap("Esri.WorldImagery") 
         
         # 3b. 疊加 GeoJSON
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
         
-        # 移除舊的 GeoJSON 圖層 (即使名字相同，Leafmap 有時會保留舊的引用)
+        # 移除舊的 GeoJSON 圖層
         try:
              map_instance.remove_layer(LAYER_NAME)
         except Exception:
@@ -162,7 +166,56 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
     # 修正: 使用 solara.display() 橋接 Leafmap (IPython Widget)
     return solara.display(m)
 
-# --- 3. 應用程式頁面佈局 ---
+# --- 4. 測試元件: 驗證 GeoJSON 渲染能力 ---
+@solara.component
+def Test_GeoJSON_MapView(gdf, bounds):
+    """用於單獨測試 GeoJSON 是否能成功顯示和縮放的暫時性元件。"""
+    
+    def create_test_map():
+        m = leafmap.Map(
+            center=[23.7, 120.9], 
+            zoom=5,
+            controls=[]
+        )
+        m.layout.height = "300px"
+        return m
+
+    m = solara.use_memo(create_test_map, dependencies=[])
+
+    # 在地圖初始化後，添加數據並縮放
+    solara.use_effect(
+        lambda: add_test_data_and_fit(m, gdf, bounds), 
+        dependencies=[bounds]
+    )
+
+    def add_test_data_and_fit(map_instance, test_gdf, test_bounds):
+        if map_instance is None or test_gdf.empty:
+            return
+        
+        try:
+            # 移除舊圖層 (如果有)
+            map_instance.remove_layer("Test_GeoJSON")
+        except Exception:
+            pass
+            
+        # 疊加 GeoJSON
+        map_instance.add_gdf(
+            test_gdf, 
+            layer_name="Test_GeoJSON",
+            style_function={"color": "blue", "fillOpacity": 0.3}
+        )
+        
+        # 執行縮放
+        if test_bounds:
+            map_instance.fit_bounds(test_bounds)
+    
+    return solara.Column([
+        solara.Markdown("### 🧪 GeoJSON 測試圖台 (僅用於診斷)"),
+        solara.display(m)
+    ])
+
+
+# --- 5. 應用程式頁面佈局 ---
 
 @solara.component
 def Page():
@@ -237,3 +290,6 @@ def Page():
             disabled=filtered_count == 0,
             icon_name="download"
         )
+        
+        # *** 新增測試圖台用於診斷 ***
+        Test_GeoJSON_MapView(all_solar_data.value, map_bounds.value)
