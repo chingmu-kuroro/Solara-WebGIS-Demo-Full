@@ -124,25 +124,18 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
             return
         
         # 3a. 設置/重設底圖
-        # 刪除除了 Leafmap 內建的 OpenStreetMap 以外的所有圖層
+        # 刪除所有 Layers (只保留 Leafmap 內建的 OpenStreetMap，如果它存在的話)
+        # CRITICAL: 簡化圖層清除邏輯
         for layer in list(map_instance.layers):
-            if not isinstance(layer, ipyleaflet.TileLayer) or layer.name != 'OpenStreetMap':
-                try:
-                    map_instance.remove_layer(layer)
-                except Exception:
-                    pass
+             map_instance.remove_layer(layer)
             
         # 關鍵修復：手動添加 Esri World Imagery (原始影像代表)
-        # 由於我們只用一個圖層，我們只添加一次
-        # 修正: 確保只在沒有底圖時添加
-        has_basemap = any(isinstance(layer, ipyleaflet.TileLayer) for layer in map_instance.layers)
-        if not has_basemap:
-            map_instance.add_basemap("Esri.WorldImagery") 
+        map_instance.add_basemap("Esri.WorldImagery") 
         
         # 3b. 疊加 GeoJSON
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
         
-        # 移除舊的 GeoJSON 圖層
+        # 移除舊的 GeoJSON 圖層 (儘管上一步已經清空，這是保險措施)
         try:
              map_instance.remove_layer(LAYER_NAME)
         except Exception:
@@ -164,7 +157,9 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
         # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
         if bounds:
             # Leafmap 的 fit_bounds 接受 [[miny, minx], [maxy, maxx]] 格式
-            map_instance.fit_bounds(bounds)
+            # 增加一個延遲呼叫，確保 Leaflet 實例完全初始化
+            # Note: ipyleaflet 有時需要幾毫秒才能讓 JS 端準備好
+            map_instance.fit_bounds(bounds, padding=[10, 10]) # 增加 padding 讓邊界更美觀
     
     # 修正: 使用 solara.display() 橋接 Leafmap (IPython Widget)
     return solara.display(m)
@@ -197,12 +192,10 @@ def Test_GeoJSON_MapView(gdf, bounds):
         if map_instance is None or test_gdf.empty:
             return
         
-        # CRITICAL FIX: 移除舊圖層的邏輯，簡化為最穩定的操作
-        try:
-            # 移除舊圖層 (如果有)
-            map_instance.remove_layer("Test_GeoJSON")
-        except Exception:
-            pass
+        # 移除舊圖層 (如果有)
+        for layer in list(map_instance.layers):
+             if layer.name == "Test_GeoJSON":
+                 map_instance.remove_layer(layer)
             
         # 疊加 GeoJSON
         map_instance.add_gdf(
@@ -213,7 +206,8 @@ def Test_GeoJSON_MapView(gdf, bounds):
         
         # 執行縮放
         if test_bounds:
-            map_instance.fit_bounds(test_bounds)
+            # CRITICAL FIX: 執行 fit_bounds
+            map_instance.fit_bounds(test_bounds, padding=[10, 10])
     
     # 修正: 讓元件只返回 solara.display，將標題移到 Page 元件中
     return solara.display(m)
