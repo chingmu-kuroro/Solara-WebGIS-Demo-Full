@@ -120,7 +120,9 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
         if map_instance is None:
             return
         
-        # 3a. 設置/重設底圖和瓦片圖層
+        # 3a. 設置/重設底圖和瓦片圖層 (不需要任何操作，因為底圖已在 Map 構造函數中設置為 'satellite')
+        
+        # 3b. 疊加 GeoJSON (篩選後的結果)
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
 
         # 移除舊的 GeoJSON 圖層 (如果存在)
@@ -129,17 +131,16 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
         except Exception:
              pass
         
-        # 3b. 疊加 GeoJSON (篩選後的結果)
         if gdf is not None and not gdf.empty:
-            # 修正: 使用 maplibregl 的 add_geojson，並移除不兼容的 layer_name 和 style_function 參數。
-            # 樣式必須直接在 style 屬性中傳遞。
+            # CRITICAL FIX: 修正 maplibregl 樣式參數名稱，以符合 Pydantic 驗證
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
+                layer_name=LAYER_NAME, # 必須傳遞 layer_name 讓 remove_layer 能夠工作
                 style={
-                    "fill_color": "yellow",  # 使用 maplibregl 顏色
-                    "color": "red",          # 邊框
-                    "weight": 1.5,
-                    "opacity": 0.6
+                    "fill-color": "yellow",      # MapLibre 樣式
+                    "line-color": "red",         # MapLibre 樣式
+                    "line-width": 1.5,
+                    "fill-opacity": 0.6
                 }
             )
 
