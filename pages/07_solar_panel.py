@@ -7,6 +7,8 @@ import warnings
 import os
 from pathlib import Path
 from typing import Tuple, List, Optional, Any
+# 引入 ipyleaflet 相關元件，以便更精確地控制圖層
+import ipyleaflet
 
 # 忽略 geopandas/shapely 相關的未來警告
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -48,6 +50,7 @@ def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[List[List[float]]]]:
             
     # 邏輯修正: 只有在 data 為 None (檔案不存在或讀取失敗) 時，才使用空的 GeoDataFrame
     if data is None: # None指的是無物件，沒有任何東西
+        # 警告會讓使用者確認檔案未找到
         print(f"Warning: {GEOJSON_PATH} not found or corrupted. Using empty data.")
         data = gpd.GeoDataFrame(
             pd.DataFrame({'area_m2': []}), 
@@ -96,16 +99,20 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
         m = leafmap.Map(
             center=default_center, 
             zoom=10, 
-            # 修正: 移除 layer_control=False 和 layers=[] 參數，讓 Leafmap 走預設初始化路徑
+            # 確保不啟用內建的圖層管理器，避免與 Solara 衝突
+            layer_control=False 
         )
         m.layout.height = "70vh"
         
-        # 設置左右兩個底圖：Leafmap 的 SplitMap 依賴於至少兩個圖層，並通過 left/right 屬性指定
-        # 由於 Leafmap 默認加載了 OpenStreetMap，我們需要先移除它
-        if len(m.layers) > 0:
+        # 關鍵修復：手動添加 SplitMap 所需的圖層，並移除 Leafmap 默認加載的圖層
+        # Leafmap 默認會加載一個 OpenStreetMap TileLayer，我們需要移除它
+        if len(m.layers) > 0 and isinstance(m.layers[0], ipyleaflet.TileLayer):
              m.remove_layer(m.layers[0])
-
+        
+        # 添加 SplitMap 的兩個底圖
+        # 左側：原始影像
         m.add_basemap("Esri World Imagery", name="原始影像 (左)", left=True) 
+        # 右側：簡潔地圖，用於顯示 GeoJSON 成果
         m.add_basemap("CartoDB Positron", name="篩選結果 (右)", right=True)
         
         # 修正: 如果有邊界框數據，則將地圖視圖縮放至 GeoJSON 範圍
@@ -213,8 +220,7 @@ def Page():
         solara.Markdown(
             """
             **提示：**
-            * 左側地圖顯示原始衛星影像 (Web Tiles)。
-            * 右側圖台：顯示 GeoAI 推論後的 GeoJSON 成果，並啟用分割捲簾。
+            * 左側圖台：顯示原始衛星影像 (Web Tiles)，右側圖台：顯示 GeoAI 推論後的 GeoJSON 成果，並啟用分割捲簾。
             * 拖動滑塊即可即時篩選和更新右側圖層，體驗空間數據的互動式分析。
             """
         )
