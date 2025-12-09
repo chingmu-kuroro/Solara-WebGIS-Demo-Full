@@ -26,7 +26,7 @@ ORIGINAL_IMAGE_PATH = APP_ROOT / "original_image.tif"
 BboxType = Tuple[float, float, float, float]
 
 # 檢查檔案是否存在，如果不存在則創建空的 GeoDataFrame 作為 fallback
-def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[BboxType]]:
+def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[List[List[float]]]]:
     """載入 GeoJSON 數據，並返回 GeoDataFrame 和其邊界框 (bbox)。"""
     data = None
     bbox = None
@@ -36,9 +36,8 @@ def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[BboxType]]:
             data = gpd.read_file(GEOJSON_PATH)
             # 成功讀取後計算邊界框 (minx, miny, maxx, maxy)
             if not data.empty:
-                # Leafmap (ipyleaflet) 需要 (miny, minx, maxy, maxx) 的格式
+                # Leafmap (ipyleaflet) 需要 [[miny, minx], [maxy, maxx]] 的格式
                 minx, miny, maxx, maxy = data.total_bounds
-                # 轉換為 Leaflet/ipyleaflet 的 Bounds 格式 [[miny, minx], [maxy, maxx]]
                 bbox = [[miny, minx], [maxy, maxx]] 
         except Exception as e:
             # 讀取失敗，data 仍為 None
@@ -143,7 +142,7 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
             map_instance.add_gdf(
                 gdf, 
                 layer_name=LAYER_NAME, 
-                right=True, # 確保圖層只出現在右側地圖
+                right=True, # 確保圖層只出現在右側圖層
                 style_function={
                     "fillColor": "#FFD700", # 金色填充
                     "color": "#FF4500",      # 橘紅色邊框
@@ -159,14 +158,15 @@ def GeoAI_SplitMap(current_filtered_data, initial_bounds):
 
 @solara.component
 def Page():
-    # min_area 返回 (value, setter) 的 tuple，例如 (100.0, function)
-    min_area = solara.use_state(100.0)
+    # 修正: 使用解構賦值，將狀態值和設定器分開，以避免序列化錯誤。
+    # min_area_value 才是實際的值 (e.g., 100.0)
+    min_area_value, set_min_area = solara.use_state(100.0)
 
     # FINAL FIX: 在元件內部使用 solara.use_memo 鉤子來記憶化計算結果。
-    # 修正: 將 min_area.value 修正為 min_area[0] 來獲取狀態值
+    # 修正: 將 min_area.value 修正為 min_area_value
     current_filtered_data = solara.use_memo(
-        lambda: calculate_filtered_data(min_area[0]), 
-        dependencies=[min_area[0]]
+        lambda: calculate_filtered_data(min_area_value), 
+        dependencies=[min_area_value]
     )
     
     # 獲取總數據量
@@ -188,10 +188,10 @@ def Page():
         solara.Markdown("---")
         
         # 滑塊控制元件
-        # 將 min_area 整個 tuple 傳給 value，Slider 元件會自動處理 [0] 和 [1]
+        # 修正: 將 value 設置為 (min_area_value, set_min_area) 的 Tuple
         solara.SliderFloat(
             label=f"最小光電板面積 ({filtered_count}/{total_count} 個顯示中)", 
-            value=min_area, 
+            value=(min_area_value, set_min_area), 
             min=0.0, 
             max=max_area,
             step=10.0,
@@ -199,8 +199,8 @@ def Page():
         )
         
         # 統計資訊
-        # 修正: 將 min_area.value 修正為 min_area[0] 來獲取狀態值
-        solara.Info(f"總共偵測到 **{total_count}** 個地物。目前顯示 **{filtered_count}** 個面積大於 **{min_area[0]:.2f} m²** 的光電板。")
+        # 修正: 將 min_area[0] 修正為 min_area_value
+        solara.Info(f"總共偵測到 **{total_count}** 個地物。目前顯示 **{filtered_count}** 個面積大於 **{min_area_value:.2f} m²** 的光電板。")
         
         solara.Markdown("## 🌐 對比圖台：左側 (原始影像) vs 右側 (篩選結果)")
         
