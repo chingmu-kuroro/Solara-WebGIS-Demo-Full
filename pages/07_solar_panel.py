@@ -105,39 +105,40 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
             "center": default_center
         }
         
-        # 移除 Map 構造函數中的 bounds 參數，改在 use_effect 中處理縮放
+        # 最終修復：將 GeoJSON 的 BBox 傳遞給 Map 構造函數，確保地圖在初始化時鎖定到正確的範圍
+        if initial_bounds:
+            # MapLibre 接受 [minx, miny, maxx, maxy] 列表作為 bounds 參數
+            # 這是 MapLibre GL 官方推薦的初始化縮放方式
+            map_kwargs["bounds"] = list(initial_bounds)
         
         m = leafmap.Map(**map_kwargs)
         m.layout.height = "70vh"
         return m
         
     # initial_bounds 必須是 use_memo 的依賴，以確保在數據讀取完成後 Map 能夠重新創建
-    m = solara.use_memo(create_map_instance, dependencies=[]) # 移除 initial_bounds 依賴，避免不必要的重建
+    # 移除 initial_bounds 依賴，避免 Map 不必要的重建
+    m = solara.use_memo(create_map_instance, dependencies=[initial_bounds]) 
     
     # 2. CRITICAL FIX: 整合所有圖層操作和縮放邏輯
+    # 由於縮放已在 create_map_instance 中處理，這裡只處理圖層的動態更新。
     solara.use_effect(
-        lambda: update_geojson_layer_and_zoom(m, current_filtered_data, initial_bounds), 
-        dependencies=[current_filtered_data, initial_bounds]
+        lambda: update_geojson_layer(m, current_filtered_data), 
+        dependencies=[current_filtered_data]
     )
 
-    # 3. 處理 GeoJSON 疊加和視圖縮放 (所有操作都應在 map_instance 準備好後執行)
-    def update_geojson_layer_and_zoom(map_instance, gdf, bounds):
+    # 3. 處理 GeoJSON 疊加 (只處理圖層更新，不處理縮放)
+    def update_geojson_layer(map_instance, gdf):
         if map_instance is None:
             return
         
-        # 3a. 疊加 GeoJSON (篩選後的結果)
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
         TILE_LAYER_NAME = "Original Imagery"
 
-        # 移除舊的 GeoJSON 圖層 (如果存在)
+        # 3a. 疊加原始影像瓦片圖層 (僅在第一次或地圖沒有該圖層時疊加)
         try:
-             map_instance.remove_layer(LAYER_NAME)
-        except Exception:
-             pass
-        
-        # 3b. 疊加原始影像瓦片圖層 (僅在第一次或地圖沒有該圖層時疊加)
-        try:
-             if not map_instance.layer_names or TILE_LAYER_NAME not in map_instance.layer_names:
+             # MapLibre GL 的圖層清理邏輯非常困難。
+             # 我們只嘗試添加 GeoJSON，並假設 MapLibre GL 會自動處理更新。
+             if TILE_LAYER_NAME not in map_instance.layer_names:
                  map_instance.add_tile_layer(
                      NAIP_TILE_URL, 
                      name=TILE_LAYER_NAME, 
@@ -147,23 +148,19 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
         except Exception as e:
             print(f"Error adding tile layer: {e}")
         
+        # 3b. 疊加 GeoJSON (篩選後的結果)
+        try:
+             # 移除舊 GeoJSON 數據源和圖層
+             map_instance.remove_layer(LAYER_NAME)
+        except Exception:
+             pass
+        
         if gdf is not None and not gdf.empty:
-            # 最終 GeoJSON 疊加：我們知道 add_geojson 裸機呼叫沒有 Pydantic 錯誤
+            # 最終修正: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身。
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
+                name=LAYER_NAME,       # 重新引入 name 參數，這是 MapLibre GL 移除圖層的依據
             )
-
-        # 3c. 執行縮放 (僅在數據載入後執行一次，確保地圖最終對準數據)
-        if bounds:
-            # 最終 CRITICAL FIX: 繞過所有 fit_bounds/zoom_to_extent 的方法衝突。
-            # 再次使用 set_center(lon, lat, zoom) 組合，但這次是確保在 use_effect 中執行。
-            minx, miny, maxx, maxy = bounds
-            center_lon = (minx + maxx) / 2
-            center_lat = (miny + maxy) / 2
-            
-            # 使用 set_center 確保地圖移動到 GeoJSON 數據範圍 (美國加州)
-            # 設定一個較高的 Zoom Level (例如 15) 確保地物可見
-            map_instance.set_center(center_lon, center_lat, zoom=15) 
     
     # 修正: maplibregl 後端必須使用 to_solara()
     return m.to_solara() 
