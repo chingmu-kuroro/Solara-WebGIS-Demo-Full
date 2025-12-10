@@ -45,7 +45,7 @@ def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[BboxType]]:
             # 成功讀取後計算邊界框 (minx, miny, maxx, maxy)
             if not data.empty:
                 # CRITICAL FIX: 確保我們導出的是 [minx, miny, maxx, maxy] 格式的 Tuple，
-                # 以便與 zoom_to_extent(*bounds) 兼容
+                # 以便與手動中心計算兼容
                 minx, miny, maxx, maxy = data.total_bounds
                 bbox = (minx, miny, maxx, maxy)
         except Exception as e:
@@ -141,13 +141,15 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
 
         # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
         if bounds:
-            # CRITICAL FIX: 繞回到 fit_bounds，但使用 Leaflet/ipyleaflet 兼容的嵌套列表格式
-            # 格式: [[miny, minx], [maxy, maxx]]
+            # CRITICAL FIX: 繞過所有 fit_bounds/zoom_to_extent 的方法衝突。
+            # 手動計算中心點並使用最穩定的 set_center 函式。
             minx, miny, maxx, maxy = bounds
-            leaflet_bounds = [[miny, minx], [maxy, maxx]]
+            center_lon = (minx + maxx) / 2
+            center_lat = (miny + maxy) / 2
             
-            # MapLibre GL 應能通過此格式的轉換來設定縮放
-            map_instance.fit_bounds(leaflet_bounds) 
+            # 使用 set_center 確保地圖移動到 GeoJSON 數據範圍
+            # 設定一個較高的 Zoom Level (例如 15) 確保地物可見
+            map_instance.set_center((center_lon, center_lat), zoom=15) 
     
     # 修正: maplibregl 後端必須使用 to_solara()
     return m.to_solara() 
