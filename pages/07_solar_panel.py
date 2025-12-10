@@ -27,7 +27,6 @@ NAIP_TILE_URL = "https://server.arcgisonline.com/arcgis/rest/services/World_Imag
 
 
 # 定義一個類型別名，用於邊界框 (minx, miny, maxx, maxy)
-# 注意：這裡的 Bbox 仍然是 (minx, miny, maxx, maxy) 格式的 Tuple
 BboxType = Tuple[float, float, float, float] 
 
 # 檢查檔案是否存在，如果不存在則創建空的 GeoDataFrame 作為 fallback
@@ -71,6 +70,7 @@ map_bounds = solara.reactive(initial_bbox)
 # FINAL FIX: 移除 @solara.use_memo 裝飾器，使 filtered_data 成為一個普通的輔助函式。
 # 這樣在模組載入時就不會報錯 "No render context"。
 def calculate_filtered_data(min_area_value):
+    """計算篩選後的 GeoDataFrame，並將樣式內嵌到 GeoJSON 屬性中。"""
     # 由於 get_initial_data() 確保了 GeoDataFrame 實例總會被返回，
     # 這裡只需要檢查 GeoDataFrame 是否為空即可。
     if all_solar_data.value.empty: # empty指的是無物件，沒有任何資料
@@ -78,8 +78,17 @@ def calculate_filtered_data(min_area_value):
     
     # 執行篩選 (area_m2 >= min_area)
     try:
-        # 確保 'area_m2' 欄位存在且是數值類型
-        return all_solar_data.value[all_solar_data.value['area_m2'] >= min_area_value]
+        filtered_gdf = all_solar_data.value[all_solar_data.value['area_m2'] >= min_area_value].copy()
+        
+        # CRITICAL FIX: 在 GeoDataFrame 中加入 MapLibre GL 可識別的樣式屬性 (GeoJSON Properties)
+        # 這樣就不需要將 style 作為參數傳遞給 add_geojson
+        filtered_gdf['fill'] = '#FFD700'  # 金色填充
+        filtered_gdf['stroke'] = '#FF4500' # 橘紅色邊框
+        filtered_gdf['stroke-width'] = 2
+        filtered_gdf['fill-opacity'] = 0.7
+        
+        return filtered_gdf
+        
     except KeyError:
         print("Error: 'area_m2' column not found in GeoJSON. Cannot filter.")
         return all_solar_data.value
@@ -118,12 +127,12 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
     # 2. CRITICAL FIX: 整合所有圖層操作和縮放邏輯
     # 由於縮放已在 create_map_instance 中處理，這裡只處理圖層的動態更新。
     solara.use_effect(
-        lambda: update_geojson_layer(m, current_filtered_data, initial_bounds), 
-        dependencies=[current_filtered_data, initial_bounds]
+        lambda: update_geojson_layer(m, current_filtered_data), 
+        dependencies=[current_filtered_data]
     )
 
     # 3. 處理 GeoJSON 疊加 (只處理圖層更新，不處理縮放)
-    def update_geojson_layer(map_instance, gdf, bounds):
+    def update_geojson_layer(map_instance, gdf):
         if map_instance is None:
             return
         
@@ -132,7 +141,6 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
 
         # 3a. 疊加原始影像瓦片圖層 (僅在第一次或地圖沒有該圖層時疊加)
         try:
-             # MapLibre GL 的圖層清理邏輯非常困難。
              if TILE_LAYER_NAME not in map_instance.layer_names:
                  map_instance.add_tile_layer(
                      NAIP_TILE_URL, 
@@ -151,29 +159,14 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
              pass
         
         if gdf is not None and not gdf.empty:
-            # 最終修正: 傳遞 GeoJSON 數據和一個 MapLibre GL JS 兼容的 style 字典
+            # 最終 CRITICAL FIX: 移除所有關鍵字參數，解決 Pydantic 錯誤。
+            # 樣式已內嵌於 gdf 數據的 attributes 中。
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
-                name=LAYER_NAME,       # 重新引入 name 參數，用於移除圖層
-                
-                # CRITICAL FIX: 使用 MapLibre GL 兼容的樣式名稱，確保 GeoJSON 可見
-                style={
-                    "fill-color": "#FFD700",  # 金色填充
-                    "line-color": "#FF4500",  # 橘紅色邊框
-                    "line-width": 2,
-                    "fill-opacity": 0.7
-                }
             )
-        
-        # 3c. 最終檢查縮放：確保 GeoJSON 疊加後，地圖視圖正確。
-        if bounds and (map_instance.center[0] > 0): # 只有在中心點仍為台灣 (經度 > 0) 時強制縮放
-             minx, miny, maxx, maxy = bounds
-             center_lon = (minx + maxx) / 2
-             center_lat = (miny + maxy) / 2
-             
-             # 僅在 GeoJSON 數據點在西半球 (例如加州) 時，才執行縮放，避免重複縮放
-             if center_lon < 0: 
-                 map_instance.set_center(center_lon, center_lat, zoom=15)
+
+        # 3c. 縮放檢查 (如果 bounds 成功初始化，地圖應該已經縮放)
+        # 不再執行手動 set_center，依賴 Map 構造函數的 bounds 參數
     
     # 修正: maplibregl 後端必須使用 to_solara()
     return m.to_solara() 
@@ -235,7 +228,7 @@ def Page():
         solara.Markdown(
             """
             **提示：**
-            * **單一地圖模式：** 地圖已設定為高解析度影像底圖，並直接疊加 GeoJSON 成果，圖幅已自動縮放至數據範圍。
+            * **單一地圖模式：** 地圖已設定為高解析度影像底圖，並直接疊加 GeoJSON 成果，圖幅應自動縮放至數據範圍。
             * 拖動滑塊即可即時篩選和更新地圖圖層，體驗空間數據的互動式分析。
             """
         )
