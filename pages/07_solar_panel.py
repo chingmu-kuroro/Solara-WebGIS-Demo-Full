@@ -7,8 +7,6 @@ import warnings
 import os
 from pathlib import Path
 from typing import Tuple, List, Optional, Any
-# 移除 ipyleaflet 相關元件，因為 maplibregl 不使用它們
-# import ipyleaflet 
 
 # 忽略 geopandas/shapely 相關的未來警告
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -108,7 +106,6 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
         # 最終修復：將 GeoJSON 的 BBox 傳遞給 Map 構造函數，確保地圖在初始化時鎖定到正確的範圍
         if initial_bounds:
             # MapLibre 接受 [minx, miny, maxx, maxy] 列表作為 bounds 參數
-            # 這是 MapLibre GL 官方推薦的初始化縮放方式
             map_kwargs["bounds"] = list(initial_bounds)
         
         m = leafmap.Map(**map_kwargs)
@@ -116,18 +113,17 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
         return m
         
     # initial_bounds 必須是 use_memo 的依賴，以確保在數據讀取完成後 Map 能夠重新創建
-    # 移除 initial_bounds 依賴，避免 Map 不必要的重建
     m = solara.use_memo(create_map_instance, dependencies=[initial_bounds]) 
     
     # 2. CRITICAL FIX: 整合所有圖層操作和縮放邏輯
     # 由於縮放已在 create_map_instance 中處理，這裡只處理圖層的動態更新。
     solara.use_effect(
-        lambda: update_geojson_layer(m, current_filtered_data), 
-        dependencies=[current_filtered_data]
+        lambda: update_geojson_layer(m, current_filtered_data, initial_bounds), 
+        dependencies=[current_filtered_data, initial_bounds]
     )
 
     # 3. 處理 GeoJSON 疊加 (只處理圖層更新，不處理縮放)
-    def update_geojson_layer(map_instance, gdf):
+    def update_geojson_layer(map_instance, gdf, bounds):
         if map_instance is None:
             return
         
@@ -137,7 +133,6 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
         # 3a. 疊加原始影像瓦片圖層 (僅在第一次或地圖沒有該圖層時疊加)
         try:
              # MapLibre GL 的圖層清理邏輯非常困難。
-             # 我們只嘗試添加 GeoJSON，並假設 MapLibre GL 會自動處理更新。
              if TILE_LAYER_NAME not in map_instance.layer_names:
                  map_instance.add_tile_layer(
                      NAIP_TILE_URL, 
@@ -156,11 +151,29 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
              pass
         
         if gdf is not None and not gdf.empty:
-            # 最終修正: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身。
+            # 最終修正: 傳遞 GeoJSON 數據和一個 MapLibre GL JS 兼容的 style 字典
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
-                name=LAYER_NAME,       # 重新引入 name 參數，這是 MapLibre GL 移除圖層的依據
+                name=LAYER_NAME,       # 重新引入 name 參數，用於移除圖層
+                
+                # CRITICAL FIX: 使用 MapLibre GL 兼容的樣式名稱，確保 GeoJSON 可見
+                style={
+                    "fill-color": "#FFD700",  # 金色填充
+                    "line-color": "#FF4500",  # 橘紅色邊框
+                    "line-width": 2,
+                    "fill-opacity": 0.7
+                }
             )
+        
+        # 3c. 最終檢查縮放：確保 GeoJSON 疊加後，地圖視圖正確。
+        if bounds and (map_instance.center[0] > 0): # 只有在中心點仍為台灣 (經度 > 0) 時強制縮放
+             minx, miny, maxx, maxy = bounds
+             center_lon = (minx + maxx) / 2
+             center_lat = (miny + maxy) / 2
+             
+             # 僅在 GeoJSON 數據點在西半球 (例如加州) 時，才執行縮放，避免重複縮放
+             if center_lon < 0: 
+                 map_instance.set_center(center_lon, center_lat, zoom=15)
     
     # 修正: maplibregl 後端必須使用 to_solara()
     return m.to_solara() 
