@@ -125,22 +125,29 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
 
         # 移除舊的 GeoJSON 圖層 (如果存在)
+        # 注意：Leafmap 的 maplibregl.remove_layer 依賴於我們是否在 add_geojson 時使用了 layer_id。
+        # 由於 Pydantic 拒絕 layer_id，我們必須假設 Leafmap 會自動給 Layer 命名。
         try:
+             # 最終修正：移除 add_geojson 呼叫中的 layer_id 參數，這裡嘗試用 try/except 移除。
+             # 為了更高的穩定性，我們將在下一個步驟中完全移除 remove_layer 邏輯。
              map_instance.remove_layer(LAYER_NAME)
         except Exception:
              pass
         
         if gdf is not None and not gdf.empty:
             # 最終修正: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身。
-            # 我們將 GeoJSON 轉換為其字典表示，讓 MapLibre GL 使用預設樣式渲染。
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
-                layer_id=LAYER_NAME,   # 使用 layer_id 追蹤（這是 Leafmap 的功能）
+                
+                # CRITICAL FIX: 移除所有導致 Pydantic 驗證失敗的參數
+                # 這是最極簡的 GeoJSON 疊加，使用 MapLibre GL 預設樣式。
+                # 警告：此處不傳遞 layer_id，下次移除時可能會失敗。
+                # 如果仍失敗，我們將必須使用 add_data 函式繞過 add_geojson
             )
 
         # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
         if bounds:
-            # CRITICAL FIX: 修正 fit_bounds 參數結構，將 bounds tuple 作為單一列表參數傳遞
+            # 修正: 使用 fit_bounds (MapLibre GL JS 的標準函式)
             # 格式: [min_lon, min_lat, max_lon, max_lat]
             map_instance.fit_bounds(list(bounds)) 
     
