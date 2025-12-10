@@ -134,7 +134,7 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
              pass
         
         if gdf is not None and not gdf.empty:
-            # CRITICAL FIX: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身。
+            # 最終 CRITICAL FIX: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身。
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
                 # 移除 layer_id 參數，解決 Pydantic 錯誤。
