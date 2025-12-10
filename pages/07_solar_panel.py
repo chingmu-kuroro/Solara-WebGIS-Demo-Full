@@ -29,7 +29,8 @@ NAIP_TILE_URL = "https://server.arcgisonline.com/arcgis/rest/services/World_Imag
 
 
 # 定義一個類型別名，用於邊界框 (minx, miny, maxx, maxy)
-BboxType = Tuple[float, float, float, float]
+# 修正: 這裡的 BboxType 實際上應該是 List[List[float]] 格式以兼容 Leafmap 的縮放要求
+BboxType = List[List[float]]
 
 # 檢查檔案是否存在，如果不存在則創建空的 GeoDataFrame 作為 fallback
 def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[BboxType]]:
@@ -43,9 +44,9 @@ def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[BboxType]]:
             data = gpd.read_file(GEOJSON_PATH)
             # 成功讀取後計算邊界框 (minx, miny, maxx, maxy)
             if not data.empty:
-                # Leafmap (maplibregl) 需要 [minx, miny, maxx, maxy] 的格式
+                # CRITICAL FIX: 轉換為 Leafmap/Leaflet 標準 BBox 格式: [[miny, minx], [maxy, maxx]]
                 minx, miny, maxx, maxy = data.total_bounds
-                bbox = (minx, miny, maxx, maxy)
+                bbox = [[miny, minx], [maxy, maxx]]
         except Exception as e:
             # 讀取失敗，data 仍為 None
             print(f"Error reading GeoJSON at {GEOJSON_PATH}: {e}")
@@ -132,18 +133,17 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
              pass
         
         if gdf is not None and not gdf.empty:
-            # CRITICAL FIX: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身。
-            # 這是最極簡的 GeoJSON 疊加，使用 MapLibre GL 預設樣式。
+            # 最終修正: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身。
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
             )
 
         # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
         if bounds:
-            # 修正: 使用 fit_bounds (MapLibre GL JS 的標準函式)
-            # 格式: [min_lon, min_lat, max_lon, max_lat]
-            # 由於 GeoJSON 在美國，而初始中心點在台灣，強制縮放是必須的。
-            map_instance.fit_bounds(list(bounds)) 
+            # CRITICAL FIX: 修正 fit_bounds 參數結構。
+            # 我們現在傳遞的是 [[miny, minx], [maxy, maxx]] 的嵌套列表格式。
+            # Leafmap 應該能夠處理這個結構並正確縮放 MapLibre GL 視圖。
+            map_instance.fit_bounds(bounds) 
     
     # 修正: maplibregl 後端必須使用 to_solara()
     return m.to_solara() 
