@@ -1,7 +1,9 @@
 import solara
 import geopandas as gpd
 import pandas as pd
-# CRITICAL FIX: 切換到 leafmap.maplibregl 後端 (更穩定且支持 to_solara)
+# 引入 geoai 套件 (用於使用其互動式視覺化API)
+import geoai 
+# CRITICAL FIX: 切換到 leafmap.maplibregl 後端
 import leafmap.maplibregl as leafmap 
 import warnings
 import os
@@ -23,13 +25,11 @@ GEOJSON_FILENAME = "solar_panels_final_results.geojson"
 GEOJSON_PATH = Path("/code") / GEOJSON_FILENAME
 
 # 由於 TIFF 檔案太大，我們將使用 Web 服務瓦片來代表原始影像。
-# 遠端瓦片服務 URL (示例：從 GeoTIFF 轉換而來的 XYZ 瓦片服務 URL)
 # 註解: 由於 Leafmap 不直接接受 GeoTIFF URL，我們使用 USGS NAIP 瓦片來代表高解析度影像
 NAIP_TILE_URL = "https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 
 
 # 定義一個類型別名，用於邊界框 (minx, miny, maxx, maxy)
-# 注意：這裡的 Bbox 仍然是 (minx, miny, maxx, maxy) 格式的 Tuple
 BboxType = Tuple[float, float, float, float] 
 
 # 檢查檔案是否存在，如果不存在則創建空的 GeoDataFrame 作為 fallback
@@ -37,14 +37,11 @@ def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[BboxType]]:
     """載入 GeoJSON 數據，並返回 GeoDataFrame 和其邊界框 (bbox)。"""
     data = None
     bbox = None
-    # 這裡 GEOJSON_PATH 應該是 /code/solar_panels_final_results.geojson
     if GEOJSON_PATH.exists():
         try:
             # 使用 Path 物件讀取檔案
             data = gpd.read_file(GEOJSON_PATH)
-            # 成功讀取後計算邊界框 (minx, miny, maxx, maxy)
             if not data.empty:
-                # CRITICAL FIX: 確保我們導出的是 [minx, miny, maxx, maxy] 格式的 Tuple，
                 minx, miny, maxx, maxy = data.total_bounds
                 bbox = (minx, miny, maxx, maxy)
         except Exception as e:
@@ -52,8 +49,7 @@ def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[BboxType]]:
             print(f"Error reading GeoJSON at {GEOJSON_PATH}: {e}")
             
     # 邏輯修正: 只有在 data 為 None (檔案不存在或讀取失敗) 時，才使用空的 GeoDataFrame
-    if data is None: # None指的是無物件，沒有任何東西
-        # 警告會讓使用者確認檔案未找到
+    if data is None: 
         print(f"Warning: {GEOJSON_PATH} not found or corrupted. Using empty data.")
         data = gpd.GeoDataFrame(
             pd.DataFrame({'area_m2': []}), 
@@ -66,21 +62,16 @@ def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[BboxType]]:
 # 核心狀態: 儲存所有 GeoAI 結果 (GeoDataFrame) 和 BBOX。
 initial_gdf, initial_bbox = get_initial_data()
 all_solar_data = solara.reactive(initial_gdf)
-# 新增: 用於儲存地圖初始化邊界框的響應式狀態 (使用 maplibregl 格式)
 map_bounds = solara.reactive(initial_bbox)
 
 
-# FINAL FIX: 移除 @solara.use_memo 裝飾器，使 filtered_data 成為一個普通的輔助函式。
-# 這樣在模組載入時就不會報錯 "No render context"。
 def calculate_filtered_data(min_area_value):
-    # 由於 get_initial_data() 確保了 GeoDataFrame 實例總會被返回，
     # 這裡只需要檢查 GeoDataFrame 是否為空即可。
-    if all_solar_data.value.empty: # empty指的是有物件，但為空，沒有任何資料
-        return gpd.GeoDataFrame()  # 若總數據為空 (Empty GeoJSON)，快速返回空結果，跳過 try/except。
+    if all_solar_data.value.empty: 
+        return gpd.GeoDataFrame()
     
     # 執行篩選 (area_m2 >= min_area)
     try:
-        # 確保 'area_m2' 欄位存在且是數值類型
         return all_solar_data.value[all_solar_data.value['area_m2'] >= min_area_value]
     except KeyError:
         print("Error: 'area_m2' column not found in GeoJSON. Cannot filter.")
@@ -94,70 +85,38 @@ def calculate_filtered_data(min_area_value):
 @solara.component
 def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
     
-    # 1. 創建 Leafmap 實例 (使用 solara.use_memo 確保只運行一次)
-    def create_map_instance():
-        # 預設中心點 (如果沒有 GeoJSON 數據則使用台灣中心點)
-        default_center = [120.9, 23.7] # maplibregl 使用 [lon, lat]
-        m = leafmap.Map(
-            center=default_center, 
-            zoom=5, # 初始縮放較小
-            style="satellite", # 使用 maplibregl 內建的影像底圖
+    # 1. 創建地圖實例：由於我們要使用 geoai.view_vector_interactive，Map 實例創建邏輯將被簡化
+    def create_map_and_load_data():
+        if current_filtered_data.empty:
+            # 如果數據為空，則返回一個基礎 Map 實例
+            m = leafmap.Map(center=[120.9, 23.7], zoom=5, style="satellite")
+            m.layout.height = "70vh"
+            return m
+            
+        # CRITICAL FIX: 使用 geoai.view_vector_interactive 進行一鍵疊加和縮放
+        # 該函式會返回一個已經配置好 GeoJSON 和 Tiles 的 Leafmap 實例
+        # 注意: 這裡我們使用 NAIP_TILE_URL 作為原始影像的代表
+        m = geoai.view_vector_interactive(
+            current_filtered_data, 
+            tiles=NAIP_TILE_URL,
+            # 確保 Leafmap 使用 MapLibre GL 後端所需的 to_solara() 屬性
+            backend="maplibregl" 
         )
         m.layout.height = "70vh"
+        
+        # 由於 geoai.view_vector_interactive 會自動縮放，我們不需要手動 set_center 或 fit_bounds
         return m
         
-    m = solara.use_memo(create_map_instance, dependencies=[])
-    
-    # 2. CRITICAL FIX: 整合所有圖層操作和 fit_bounds 到一個 effect 中
-    # 這個 effect 確保在組件掛載 (dependencies=[]) 和數據改變 (current_filtered_data) 時都更新地圖
-    solara.use_effect(
-        lambda: update_map_layer_and_view(m, current_filtered_data, initial_bounds), 
-        dependencies=[current_filtered_data, initial_bounds]
+    # 2. 使用 solara.use_memo 來創建地圖，並將 filtered_data 作為依賴
+    # 當 filtered_data 改變時，會重建地圖實例 (這是 Leafmap/Solara 響應式圖層更新的最佳方式)
+    m = solara.use_memo(
+        create_map_and_load_data, 
+        dependencies=[current_filtered_data] # 數據改變時，強制重新生成地圖
     )
-
-    # 3. 處理 GeoJSON 疊加和視圖縮放 (所有操作都應在 map_instance 準備好後執行)
-    def update_map_layer_and_view(map_instance, gdf, bounds):
-        if map_instance is None:
-            return
-        
-        # 3a. 設置/重設底圖和瓦片圖層 (底圖已在 Map 構造函數中設置為 'satellite')
-        
-        # 3b. 疊加 GeoJSON (篩選後的結果)
-        LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
-
-        # 移除舊的 GeoJSON 圖層 (如果存在)
-        try:
-             # 移除舊 GeoJSON 數據源和圖層
-             map_instance.remove_layer(LAYER_NAME)
-        except Exception:
-             pass
-        
-        if gdf is not None and not gdf.empty:
-            # CRITICAL FIX: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身。
-            # 我們將 GeoJSON 轉換為其字典表示，讓 MapLibre GL 使用預設樣式渲染。
-            map_instance.add_geojson(
-                gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
-                name=LAYER_NAME,       # 使用 name 參數進行命名 (MapLibre 後端通常比 layer_id 穩定)
-            )
-
-        # 3c. 執行縮放 (最後執行以確保正確縮放)
-        if bounds:
-            # 最終 CRITICAL FIX: 繞過所有 fit_bounds/zoom_to_extent 的方法衝突。
-            # 重新使用 set_center/zoom 組合，但這次使用 Leafmap 推薦的 set_center 參數格式 (lon, lat, zoom)。
-            minx, miny, maxx, maxy = bounds
-            
-            # 計算中心點
-            center_lon = (minx + maxx) / 2
-            center_lat = (miny + maxy) / 2
-            
-            # 手動計算一個合理的 Zoom Level
-            # 假設我們的數據範圍是 1 度 x 1 度 (加州戴維斯附近), 15 級縮放是合理的。
-            calculated_zoom = 15
-            
-            # 使用 set_center 確保地圖移動到 GeoJSON 數據範圍
-            map_instance.set_center(center_lon, center_lat, zoom=calculated_zoom) 
     
-    # 修正: maplibregl 後端必須使用 to_solara()
+    # 3. 由於縮放和圖層疊加已經在 create_map_and_load_data 內部完成，
+    # 這裡只需要將地圖實例轉換為 Solara 元件
+    
     return m.to_solara() 
 
 

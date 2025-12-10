@@ -8,3 +8,4 @@ rasterio
 rioxarray
 solara
 widgetsnbextension
+geoai-py
