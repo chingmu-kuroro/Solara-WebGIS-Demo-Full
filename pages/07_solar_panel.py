@@ -45,7 +45,7 @@ def get_initial_data() -> Tuple[gpd.GeoDataFrame, Optional[BboxType]]:
             # 成功讀取後計算邊界框 (minx, miny, maxx, maxy)
             if not data.empty:
                 # CRITICAL FIX: 確保我們導出的是 [minx, miny, maxx, maxy] 格式的 Tuple，
-                # 以便與手動中心計算兼容
+                # 以便與中心計算兼容
                 minx, miny, maxx, maxy = data.total_bounds
                 bbox = (minx, miny, maxx, maxy)
         except Exception as e:
@@ -134,22 +134,22 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
              pass
         
         if gdf is not None and not gdf.empty:
-            # 最終修正: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身。
+            # CRITICAL FIX: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身。
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
             )
 
-        # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
+        # 3c. 執行縮放 (最後執行以確保正確縮放)
         if bounds:
             # CRITICAL FIX: 繞過所有 fit_bounds/zoom_to_extent 的方法衝突。
-            # 手動計算中心點並使用最穩定的 set_center 函式。
+            # 手動計算中心點並使用最穩定的 set_center 函式，並解構參數。
             minx, miny, maxx, maxy = bounds
             center_lon = (minx + maxx) / 2
             center_lat = (miny + maxy) / 2
             
             # 使用 set_center 確保地圖移動到 GeoJSON 數據範圍
-            # 設定一個較高的 Zoom Level (例如 15) 確保地物可見
-            map_instance.set_center((center_lon, center_lat), zoom=15) 
+            # Leafmap.maplibregl.set_center 預期 (lon, lat, zoom)
+            map_instance.set_center(center_lon, center_lat, zoom=15) 
     
     # 修正: maplibregl 後端必須使用 to_solara()
     return m.to_solara() 
