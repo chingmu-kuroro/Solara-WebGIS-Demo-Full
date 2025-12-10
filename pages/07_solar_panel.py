@@ -75,7 +75,7 @@ map_bounds = solara.reactive(initial_bbox)
 def calculate_filtered_data(min_area_value):
     # 由於 get_initial_data() 確保了 GeoDataFrame 實例總會被返回，
     # 這裡只需要檢查 GeoDataFrame 是否為空即可。
-    if all_solar_data.value.empty: # empty指的是有物件，但為空，沒有任何資料
+    if all_solar_data.value.empty: # empty指的是無物件，沒有任何資料
         return gpd.GeoDataFrame()  # 若總數據為空 (Empty GeoJSON)，快速返回空結果，跳過 try/except。
     
     # 執行篩選 (area_m2 >= min_area)
@@ -104,11 +104,14 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
             "style": "satellite",
         }
         
-        # CRITICAL FIX: 如果有 GeoJSON 邊界，則在 Map 構造時傳遞 bounds 參數，
-        # 強制 MapLibre GL 在初始化時縮放到正確的範圍。
+        # 移除 Map 構造函數中的 bounds 參數，改在 use_effect 中處理縮放
         if initial_bounds:
-            # Leafmap MapLibre 接受 [minx, miny, maxx, maxy] 列表作為 bounds 參數
-            map_kwargs["bounds"] = list(initial_bounds)
+            # 設置一個接近 GeoJSON 數據的中心點作為初始化，避免從台灣開始
+            minx, miny, maxx, maxy = initial_bounds
+            center_lon = (minx + maxx) / 2
+            center_lat = (miny + maxy) / 2
+            map_kwargs["center"] = [center_lon, center_lat]
+            map_kwargs["zoom"] = 10 # 縮小到局部區域
         else:
             map_kwargs["center"] = default_center
         
@@ -122,15 +125,16 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
     # 2. CRITICAL FIX: 整合所有圖層操作和縮放邏輯
     # 注意：由於縮放已在 create_map_instance 中處理，這裡只處理圖層的動態更新。
     solara.use_effect(
-        lambda: update_geojson_layer(m, current_filtered_data), 
-        dependencies=[current_filtered_data]
+        lambda: update_geojson_layer_and_zoom(m, current_filtered_data, initial_bounds), 
+        dependencies=[current_filtered_data, initial_bounds]
     )
 
-    # 3. 處理 GeoJSON 疊加 (只處理圖層更新，不處理縮放)
-    def update_geojson_layer(map_instance, gdf):
+    # 3. 處理 GeoJSON 疊加和視圖縮放 (所有操作都應在 map_instance 準備好後執行)
+    def update_geojson_layer_and_zoom(map_instance, gdf, bounds):
         if map_instance is None:
             return
         
+        # 3a. 疊加 GeoJSON (篩選後的結果)
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
 
         # 移除舊的 GeoJSON 圖層 (如果存在)
@@ -145,6 +149,16 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
             )
+
+        # 3b. 執行縮放 (僅在數據載入後執行一次，確保地圖最終對準數據)
+        if bounds:
+            # CRITICAL FIX: 使用 Leaflet 兼容的嵌套列表格式進行 fit_bounds
+            # 格式: [[miny, minx], [maxy, maxx]]
+            minx, miny, maxx, maxy = bounds
+            leaflet_bounds = [[miny, minx], [maxy, maxx]]
+            
+            # 再次嘗試 fit_bounds，這次使用 MapLibre GL 最可能兼容的格式
+            map_instance.fit_bounds(leaflet_bounds) 
     
     # 修正: maplibregl 後端必須使用 to_solara()
     return m.to_solara() 
