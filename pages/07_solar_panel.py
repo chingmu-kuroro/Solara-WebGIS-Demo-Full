@@ -127,22 +127,22 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
 
         # 移除舊的 GeoJSON 圖層 (如果存在)
-        # CRITICAL FIX: 移除 try/except 塊，簡化為最穩定的移除 GeoJSON 來源
         try:
+             # 移除舊 GeoJSON 數據源和圖層
              map_instance.remove_layer(LAYER_NAME)
         except Exception:
              pass
         
         if gdf is not None and not gdf.empty:
-            # 最終修正: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身。
+            # CRITICAL FIX: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身。
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
-                layer_id=LAYER_NAME,   # 由於 Leafmap 內部需要 ID 追蹤來實現 remove_layer，我們傳遞它。
+                # 移除 layer_id 參數，解決 Pydantic 錯誤。
             )
 
-        # 3c. 執行縮放 (最後執行以確保正確縮放)
+        # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
         if bounds:
-            # 最終 CRITICAL FIX: 使用 zoom_to_extent，這在 MapLibre 後端更可靠，且直接接受 Bbox Tuple/List
+            # 修正: 使用 zoom_to_extent，這在 MapLibre 後端更可靠，且直接接受 Bbox Tuple/List
             # 格式: zoom_to_extent(minx, miny, maxx, maxy)
             map_instance.zoom_to_extent(*bounds) 
     
