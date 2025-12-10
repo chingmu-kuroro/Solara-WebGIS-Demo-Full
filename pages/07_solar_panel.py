@@ -119,6 +119,8 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
         if map_instance is None:
             return
         
+        # 3a. 設置/重設底圖和瓦片圖層 (底圖已在 Map 構造函數中設置為 'satellite')
+        
         # 3b. 疊加 GeoJSON (篩選後的結果)
         LAYER_NAME = "GeoAI_Filtered_Solar_Panels"
 
@@ -134,14 +136,16 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
             # 我們將 GeoJSON 轉換為其字典表示，讓 MapLibre GL 使用預設樣式渲染。
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
-                layer_id=LAYER_NAME,   # 使用 layer_id 追蹤（這是 Leafmap 的功能）
+                
+                # CRITICAL FIX: 移除所有導致 Pydantic 驗證失敗的參數
+                # 只保留 Leafmap 能夠追蹤的 layer_id，這也是最後一個需要移除的參數。
+                # 最終測試：移除 layer_id
             )
 
         # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
         if bounds:
-            # CRITICAL FIX: 使用 fit_bounds，並確保傳遞的參數是單一列表
-            # Leafmap 接受 fit_bounds(minx, miny, maxx, maxy) 或 fit_bounds(bbox_list)
-            # 由於之前 (minx, miny, maxx, maxy) 的解構傳遞失敗，我們傳遞單一列表。
+            # 修正: 使用 fit_bounds (MapLibre GL JS 的標準函式)
+            # 格式: [min_lon, min_lat, max_lon, max_lat]
             map_instance.fit_bounds(list(bounds)) 
     
     # 修正: maplibregl 後端必須使用 to_solara()
