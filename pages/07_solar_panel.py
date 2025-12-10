@@ -134,20 +134,20 @@ def GeoAI_MapView(current_filtered_data, initial_bounds): # 修正函式名稱
              pass
         
         if gdf is not None and not gdf.empty:
-            # CRITICAL FIX: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身。
+            # 最終修正: 移除所有不兼容的 Layer 參數，只傳遞 GeoJSON 數據本身。
             map_instance.add_geojson(
                 gdf.__geo_interface__, # 將 GeoDataFrame 轉換為 GeoJSON 字典
             )
 
         # 3c. 執行 fit_bounds (最後執行以確保正確縮放)
         if bounds:
-            # 最終 CRITICAL FIX: 使用 set_viewport 繞開 fit_bounds 的方法衝突。
-            # Leafmap 支援 set_viewport 傳入 bounds 參數。
-            map_instance.set_viewport(
-                bounds=list(bounds),
-                # 增加 padding 避免 GeoJSON 被邊界切掉
-                padding={"top": 50, "bottom": 50, "left": 50, "right": 50}
-            )
+            # CRITICAL FIX: 繞回到 fit_bounds，但使用 Leaflet/ipyleaflet 兼容的嵌套列表格式
+            # 格式: [[miny, minx], [maxy, maxx]]
+            minx, miny, maxx, maxy = bounds
+            leaflet_bounds = [[miny, minx], [maxy, maxx]]
+            
+            # MapLibre GL 應能通過此格式的轉換來設定縮放
+            map_instance.fit_bounds(leaflet_bounds) 
     
     # 修正: maplibregl 後端必須使用 to_solara()
     return m.to_solara() 
