@@ -59,21 +59,25 @@ def calculate_filtered_data(min_area_value):
 @solara.component
 def GeoAI_MapView(current_filtered_data):
     
-    # CRITICAL FIX: height 必須是像素字串 (如 "600px")，不能是 "100%"，否則 leafmap 會報錯
-    # 我們將地圖設為固定高度，然後讓外層 iframe 配合這個高度
+    # 1. 初始化地圖
+    # height 必須是像素字串 (如 "600px")，這是 foliumap 的要求
     m = leafmap.Map(
         location=[23.7, 120.9], 
         zoom_start=7,
-        height="600px",  # 修正：使用像素值
+        height="600px", 
         control_scale=True
     )
     
+    # 2. 加入底圖 (FIXED: 修正參數名稱)
+    # 錯誤寫法: tiles=..., attr=...
+    # 正確寫法: url=..., attribution=...
     m.add_tile_layer(
-        tiles=TILE_URL, 
-        attr="Esri World Imagery", 
+        url=TILE_URL, 
+        attribution="Esri World Imagery", 
         name="Satellite Imagery"
     )
 
+    # 3. 加入篩選後的光電板圖層
     if current_filtered_data is not None and not current_filtered_data.empty:
         style_function = lambda x: {
             'fillColor': '#FFD700', 
@@ -82,22 +86,24 @@ def GeoAI_MapView(current_filtered_data):
             'fillOpacity': 0.6
         }
         
-        m.add_gdf(
-            gdf=current_filtered_data,
-            layer_name="Filtered Solar Panels",
-            style_function=style_function,
-            zoom_to_layer=True 
-        )
+        try:
+            m.add_gdf(
+                gdf=current_filtered_data,
+                layer_name="Filtered Solar Panels",
+                style_function=style_function,
+                zoom_to_layer=True 
+            )
+        except Exception as e:
+            print(f"Error adding GDF: {e}")
     
-    # 生成 HTML
+    # 4. 生成 HTML
     map_html = m.to_html()
 
-    # 使用 iframe 顯示，設定與 Map 相同的高度
+    # 5. 使用 iframe 顯示
     solara.HTML(
         tag="iframe",
         attributes={
             "srcdoc": map_html,
-            # 這裡的 height 建議設為與上方 Map height 相同或略大，避免 scrollbar
             "style": "width: 100%; height: 610px; border: none; border-radius: 8px;"
         }
     )
