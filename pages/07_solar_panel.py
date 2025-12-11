@@ -1,9 +1,10 @@
 import solara
 import geopandas as gpd
 import pandas as pd
-# 使用 foliumap 後端 (靜態 HTML)，解決白屏問題
 import leafmap.foliumap as leafmap 
 import warnings
+import tempfile # 新增: 用於處理暫存檔
+import os
 from pathlib import Path
 from typing import Tuple, Optional
 
@@ -16,7 +17,7 @@ APP_ROOT = Path(__file__).parent.parent
 GEOJSON_FILENAME = "solar_panels_final_results.geojson"
 GEOJSON_PATH = Path("/code") / GEOJSON_FILENAME
 
-# 影像瓦片 (使用 Esri World Imagery)
+# 影像瓦片 (Esri World Imagery)
 TILE_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 
 def get_initial_data():
@@ -54,13 +55,12 @@ def calculate_filtered_data(min_area_value):
         print(f"Filter error: {e}")
         return all_solar_data.value
 
-# --- 2. Leafmap 地圖元件 (使用 IFrame 渲染) ---
+# --- 2. Leafmap 地圖元件 (修復權限與參數問題) ---
 
 @solara.component
 def GeoAI_MapView(current_filtered_data):
     
     # 1. 初始化地圖
-    # height 必須是像素字串 (如 "600px")，這是 foliumap 的要求
     m = leafmap.Map(
         location=[23.7, 120.9], 
         zoom_start=7,
@@ -68,9 +68,7 @@ def GeoAI_MapView(current_filtered_data):
         control_scale=True
     )
     
-    # 2. 加入底圖 (FIXED: 修正參數名稱)
-    # 錯誤寫法: tiles=..., attr=...
-    # 正確寫法: url=..., attribution=...
+    # 2. 加入底圖
     m.add_tile_layer(
         url=TILE_URL, 
         attribution="Esri World Imagery", 
@@ -96,17 +94,36 @@ def GeoAI_MapView(current_filtered_data):
         except Exception as e:
             print(f"Error adding GDF: {e}")
     
-    # 4. 生成 HTML
-    map_html = m.to_html()
+    # 4. FIX: 權限修復
+    # 不直接呼叫 m.to_html()，因為它會嘗試寫入唯讀目錄。
+    # 我們改為寫入 /tmp/ 目錄，然後讀取內容。
+    try:
+        # 建立一個位於 /tmp 的暫存檔案路徑
+        with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
+            temp_filepath = tmp.name
+        
+        # 將地圖存入暫存檔
+        m.to_html(outfile=temp_filepath)
+        
+        # 讀取 HTML 內容
+        with open(temp_filepath, "r", encoding="utf-8") as f:
+            map_html = f.read()
+            
+        # 刪除暫存檔 (可選，保持整潔)
+        os.remove(temp_filepath)
 
-    # 5. 使用 iframe 顯示
-    solara.HTML(
-        tag="iframe",
-        attributes={
-            "srcdoc": map_html,
-            "style": "width: 100%; height: 610px; border: none; border-radius: 8px;"
-        }
-    )
+        # 5. 使用 iframe 顯示
+        solara.HTML(
+            tag="iframe",
+            attributes={
+                "srcdoc": map_html,
+                "style": "width: 100%; height: 610px; border: none; border-radius: 8px;"
+            }
+        )
+        
+    except Exception as e:
+        solara.Error(f"Map rendering failed: {e}")
+
 
 # --- 3. 頁面佈局 ---
 
