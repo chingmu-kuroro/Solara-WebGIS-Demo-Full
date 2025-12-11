@@ -1,7 +1,7 @@
 import solara
 import geopandas as gpd
 import pandas as pd
-# FIX: 改用 foliumap 後端，它生成靜態 HTML，比 ipyleaflet 在 Web App 中更穩健，不會白屏
+# 使用 foliumap 後端 (靜態 HTML)，解決白屏問題
 import leafmap.foliumap as leafmap 
 import warnings
 from pathlib import Path
@@ -14,7 +14,6 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 APP_ROOT = Path(__file__).parent.parent
 GEOJSON_FILENAME = "solar_panels_final_results.geojson"
-# 確保路徑指向 /code/ (Hugging Face Spaces 環境)
 GEOJSON_PATH = Path("/code") / GEOJSON_FILENAME
 
 # 影像瓦片 (使用 Esri World Imagery)
@@ -40,7 +39,6 @@ def get_initial_data():
         )
     return data
 
-# 載入初始數據
 initial_gdf = get_initial_data()
 all_solar_data = solara.reactive(initial_gdf)
 
@@ -56,59 +54,51 @@ def calculate_filtered_data(min_area_value):
         print(f"Filter error: {e}")
         return all_solar_data.value
 
-# --- 2. Leafmap 地圖元件 (使用 Folium + IFrame 解決白屏問題) ---
+# --- 2. Leafmap 地圖元件 (使用 IFrame 渲染) ---
 
 @solara.component
 def GeoAI_MapView(current_filtered_data):
     
-    # 每次數據改變時，重新生成地圖 HTML
-    # 雖然這是全量刷新，但對於 <100 個多邊形來說速度很快，且能保證顯示
-    
-    # 1. 創建地圖實例 (Folium 後端)
-    # location=[緯度, 經度]
+    # CRITICAL FIX: height 必須是像素字串 (如 "600px")，不能是 "100%"，否則 leafmap 會報錯
+    # 我們將地圖設為固定高度，然後讓外層 iframe 配合這個高度
     m = leafmap.Map(
         location=[23.7, 120.9], 
         zoom_start=7,
-        height="100%", # 高度由 iframe 控制
+        height="600px",  # 修正：使用像素值
         control_scale=True
     )
     
-    # 2. 加入底圖
     m.add_tile_layer(
         tiles=TILE_URL, 
         attr="Esri World Imagery", 
         name="Satellite Imagery"
     )
 
-    # 3. 加入篩選後的光電板圖層
     if current_filtered_data is not None and not current_filtered_data.empty:
-        
-        # 定義樣式函數
         style_function = lambda x: {
-            'fillColor': '#FFD700', # 金色填充
-            'color': '#FF4500',     # 橘紅色邊框
+            'fillColor': '#FFD700', 
+            'color': '#FF4500',     
             'weight': 2,
             'fillOpacity': 0.6
         }
         
-        # 加入 GeoDataFrame
         m.add_gdf(
             gdf=current_filtered_data,
             layer_name="Filtered Solar Panels",
             style_function=style_function,
-            zoom_to_layer=True # Folium 後端支持自動縮放到圖層
+            zoom_to_layer=True 
         )
     
-    # 4. 關鍵修復：將地圖轉為 HTML 字串
+    # 生成 HTML
     map_html = m.to_html()
 
-    # 5. 使用 iframe 渲染 HTML
-    # srcdoc 屬性允許我們直接將 HTML 字串嵌入 iframe 中
+    # 使用 iframe 顯示，設定與 Map 相同的高度
     solara.HTML(
         tag="iframe",
         attributes={
             "srcdoc": map_html,
-            "style": "width: 100%; height: 70vh; border: none; border-radius: 8px;"
+            # 這裡的 height 建議設為與上方 Map height 相同或略大，避免 scrollbar
+            "style": "width: 100%; height: 610px; border: none; border-radius: 8px;"
         }
     )
 
@@ -118,10 +108,8 @@ def GeoAI_MapView(current_filtered_data):
 def Page():
     min_area_value, set_min_area = solara.use_state(10.0)
     
-    # 計算篩選結果
     current_filtered_data = calculate_filtered_data(min_area_value)
     
-    # 計算統計數字
     total_count = len(all_solar_data.value) if all_solar_data.value is not None else 0
     filtered_count = len(current_filtered_data) if current_filtered_data is not None else 0
     
@@ -129,7 +117,6 @@ def Page():
     if total_count > 0 and 'area_m2' in all_solar_data.value.columns:
          max_area = float(all_solar_data.value['area_m2'].max()) * 1.1
 
-    # 定義下載內容函數
     def get_data_string():
         if current_filtered_data is not None:
             return current_filtered_data.to_json()
@@ -141,7 +128,6 @@ def Page():
         solara.Markdown("# 🌞 光電板 GeoAI 成果篩選器")
         solara.Markdown("---")
         
-        # 滑塊
         solara.SliderFloat(
             label=f"最小光電板面積 ({filtered_count}/{total_count} 個顯示中)", 
             value=min_area_value,
@@ -156,12 +142,10 @@ def Page():
         
         solara.Markdown("## 🌐 GeoAI 成果視覺化：影像與向量")
         
-        # 呼叫地圖元件 (已改為 IFrame 渲染)
         GeoAI_MapView(current_filtered_data)
         
         solara.Markdown("**提示：** 拖動滑塊即可即時篩選並自動縮放至圖資範圍。")
         
-        # 下載按鈕
         if filtered_count > 0:
             solara.FileDownload(
                 data=get_data_string, 
